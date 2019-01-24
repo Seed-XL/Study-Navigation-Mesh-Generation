@@ -174,10 +174,9 @@ namespace NMGen
                 return; 
             }
 
-            Array.Copy(min, 0, mBoundsMin, 0, 3);
-            Array.Copy(max, 0, mBoundsMax, 0, 3);
-
-            calculateWidthDepth(); 
+            setBounds(min[0], min[1], min[2],
+                max[0],max[1],max[2]
+                ); 
         }
 
         protected void setBoundsMax( float[] value )
@@ -231,7 +230,19 @@ namespace NMGen
             return offset[dir & 0x03]; 
         }
 
-
+        /// <summary>
+        ///  分别对应x轴四个方向上的值
+        /// </summary>
+        ///             |
+        ///             |
+        ///           (0,y)
+        ///             |  
+        ///---(-1,y)----|------(1,y)---
+        ///             |
+        ///             |
+        ///           (0,y)
+        /// <param name="dir"></param>
+        /// <returns></returns>
         public static int getDirOffsetWidth(int dir)
         {
             int[] offset = new int[] { -1,0,1,0};
