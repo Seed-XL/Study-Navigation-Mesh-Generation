@@ -2,6 +2,7 @@
 
 namespace NMGen
 {
+    //AABB
     public class BoundeField
     {
 
@@ -120,7 +121,7 @@ namespace NMGen
             return overlaps; 
         }
 
-        protected int gridIndex( int widthIndex,int depthIndex )
+        protected int GetGridIndex( int widthIndex,int depthIndex )
         {
             if(widthIndex < 0
                 || depthIndex < 0 
