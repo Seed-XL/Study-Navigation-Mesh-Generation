@@ -153,7 +153,7 @@ namespace NMGen
             calculateWidthDepth(); 
         }
 
-        protected void setBounds(float xmin,float ymin,float zmin,
+        public void setBounds(float xmin,float ymin,float zmin,
             float xmax,float ymax,float zmax
             )
         {
