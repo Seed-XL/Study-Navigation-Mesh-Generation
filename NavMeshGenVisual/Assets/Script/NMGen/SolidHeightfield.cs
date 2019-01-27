@@ -47,12 +47,18 @@ namespace NMGen
 
                 mSoldHeightfield = field;  
 
-                MoveNext();      
+                //这是Java的操作，C#还是用回C#吧
+                //MoveNext();      
             } 
             
             public int depthIndex()
             {
                 return mLastDepth; 
+            }
+
+            public int widthIndex()
+            {
+                return mLastWidth; 
             }
 
             public bool hasNext()
@@ -144,6 +150,13 @@ namespace NMGen
         public SolidHeightfield(float cellSize,float cellHeight) : base(cellSize, cellHeight)
         {
 
+        }
+
+        public HeightSpan getData(int widthIndex,int depthIndex)
+        {
+            HeightSpan retSpan = null;
+            mSpans.TryGetValue(GetGridIndex(widthIndex, depthIndex), out retSpan); 
+            return retSpan; 
         }
 
         public bool addData( int widthIndex,
@@ -300,7 +313,7 @@ namespace NMGen
 
         IEnumerator IEnumerable.GetEnumerator()
         {
-            return (IEnumerator)GetEnumerator();
+            return GetEnumerator();
         }
 
         public SolidHeightFieldIterator GetEnumerator()

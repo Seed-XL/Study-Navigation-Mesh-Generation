@@ -42,7 +42,7 @@ namespace NMGen
             /*
              *  画个图可以试试，随着maxTraversableSlope的值增大，cos里面的角度值越大
              *  然后最后得到的mMinNormalY越小，那么我们要做的就是要比mMinNormal的值大，
-             *  代表的就是坡度角比对应的角小
+             *  代表的就是坡度角比对应的角小(在0-90度的范围内)
              * 
              *   * cos theta = n1 dot n2
              * 
@@ -99,10 +99,385 @@ namespace NMGen
 
             result.setBounds(xmin, ymin, zmin, xmax, ymax, zmax);
 
+            //判断哪些多边形的表面是可以行走的,坡度不能太大
             int[] polyFlags = markInputMeshWalkableFlags(vertices, indices);
 
+            int polyCount = indices.Length / 3;  
+            for(int iPoly = 0; iPoly < polyCount; iPoly++)
+            {
+                voxelizeTriangle(iPoly,
+                    vertices,
+                    indices,
+                    polyFlags[iPoly],
+                    inverseCellSize,
+                    inverseCellHeight,
+                    result); 
+            }
+
+            markLowHeightSpans(result); 
+
+            if( mClipLedges )
+            {
+                markLedgeSpans(result); 
+            }
 
             return result; 
+        }
+
+
+        private void markLedgeSpans(SolidHeightfield field)
+        {
+            SolidHeightfield.SolidHeightFieldIterator iter = field.GetEnumerator(); 
+            while( iter.MoveNext() )
+            {
+                HeightSpan span = iter.Current; 
+
+                if( (span.flags() & SpanFlags.WALKABLE) == 0 )
+                {
+                    continue; 
+                }
+
+                int widthIndex = iter.widthIndex();
+                int depthIndex = iter.depthIndex();
+
+                int currFloor = span.max();
+                int currCeiling = (span.next() != null)
+                    ? span.next().min() : int.MaxValue;
+
+
+                int minDistanceToNeighbor = int.MaxValue; 
+
+                for(int dir = 0; dir < 4; dir++)
+                {
+                    int nWidthIndex = widthIndex
+                        + BoundeField.getDirOffsetWidth(dir);
+                    int nDepthIndex = depthIndex
+                        + BoundeField.getDirOffsetDepth(dir);
+
+
+                    HeightSpan nSpan = field.getData(nWidthIndex, nDepthIndex); 
+                    if( null == nSpan )
+                    {
+                        // 用大可行的距离，再减去currFloor，得到的肯定是一个更小的值。
+                        // currFloor - mMaxTraversableStep 是一个最大落差可选地板。
+                        minDistanceToNeighbor = Math.Min(minDistanceToNeighbor, -mMaxTraversableStep - currFloor);
+                        continue; 
+                    }
+
+
+                    /* 
+                    *  先考虑一种特殊情况 ，那就是
+                    *  那就是nSpan.min也比nSpan.min也比currFloor要高，那么对应的
+                    *  的邻居相当于也是没有Floor的，所以默认取-mMaxTraversableStep吧。
+                    */
+
+                    int nFloor = -mMaxTraversableStep;
+                    int nCeiling = nSpan.min(); 
+
+                    if( Math.Min(currCeiling,nCeiling) - currFloor > mMinTraversableHeight)
+                    {
+                        minDistanceToNeighbor = Math.Min(minDistanceToNeighbor, (nFloor - currFloor));
+                    }
+
+                    for(nSpan = field.getData(nWidthIndex,nDepthIndex); nSpan != null; nSpan = nSpan.next())
+                    {
+                        nFloor = nSpan.max();  //现在才开始用max考虑真正存在的Floor
+                        nCeiling = (nSpan.next() != null)
+                            ? nSpan.next().min() : int.MaxValue; 
+
+                        if( Math.Min(currCeiling,nCeiling) - Math.Max(currFloor,nFloor) > mMinTraversableHeight )
+                        {
+                            minDistanceToNeighbor = Math.Min(minDistanceToNeighbor, (nFloor - currFloor)); 
+                        }
+                    }
+
+                }
+
+                if(minDistanceToNeighbor < -mMaxTraversableStep)
+                {
+                    span.setFlags(span.flags() & ~SpanFlags.WALKABLE); 
+                }
+            }
+        }
+
+        private void markLowHeightSpans(SolidHeightfield field)
+        {
+            SolidHeightfield.SolidHeightFieldIterator iter = field.GetEnumerator(); 
+            while( iter.MoveNext() )
+            {
+                HeightSpan span = iter.Current; 
+
+                if( (span.flags() & SpanFlags.WALKABLE) == 0 )
+                {
+                    continue; 
+                }
+
+                int spanFloor = span.max();
+                int spanCeiling = (span.next() != null)
+                    ? span.next().min() : int.MaxValue; 
+
+                if( spanCeiling - spanFloor <= mMinTraversableHeight  )
+                {
+                    span.setFlags(span.flags() & ~SpanFlags.WALKABLE);
+                }
+            }
+        }
+        
+        //按面来体素化？
+        private static void voxelizeTriangle( int polyIndex ,
+            float[] vertices,
+            int[] indices,
+            int polyFlags,
+            float inverseCellSize ,
+            float inverseCellHeight,
+            SolidHeightfield inoutField)   //本来就是引用的话，传进来就会被修改
+        {
+            int pPoly = polyIndex * 3;
+
+            //一个面的三个点
+            float[] triVerts = new float[]
+            {
+                vertices[indices[pPoly]*3],     //VertA x      
+                vertices[indices[pPoly]*3+1],   //VertA y  
+                vertices[indices[pPoly]*3+2],   //VertA z  
+                vertices[indices[pPoly+1]*3],   //VertB x
+                vertices[indices[pPoly+1]*3+1], //VertB y
+                vertices[indices[pPoly+1]*3+2], //VertB z
+                vertices[indices[pPoly+2]*3],   //VertC x
+                vertices[indices[pPoly+2]*3+1], //VertC y    
+                vertices[indices[pPoly+2]*3+2], //VertC z
+            };
+
+            float[] triBoundsMin = new float[] {
+                triVerts[0],triVerts[1],triVerts[2]
+            };
+            float[] triBoundsMax = new float[] {
+                triVerts[0],triVerts[1],triVerts[2]
+            };
+
+            // int vertPointer = 3  相当于  int i = 1 ，从第二个顶点开始算起，数组长度总共为9
+            // Loop through all vertices to determine the actual bounding box.
+            for (int vertPointer = 3; vertPointer < 9; vertPointer += 3)
+            {
+                triBoundsMin[0] = Math.Min(triBoundsMin[0], triVerts[vertPointer]);
+                triBoundsMin[1] = Math.Min(triBoundsMin[1], triVerts[vertPointer+1]);
+                triBoundsMin[2] = Math.Min(triBoundsMin[2], triVerts[vertPointer+2]);
+                triBoundsMax[0] = Math.Min(triBoundsMax[1], triVerts[vertPointer]);
+                triBoundsMax[1] = Math.Min(triBoundsMax[2], triVerts[vertPointer+1]);
+                triBoundsMax[2] = Math.Min(triBoundsMax[3], triVerts[vertPointer+2]);
+            }
+
+            if( !inoutField.overlaps(triBoundsMin,triBoundsMax) )
+            {
+                return; 
+            }
+
+            //将三角形的坐标转换成对应的cell坐标系,就是具体对应到哪个width和depth的Column  
+            int triWidthMin = (int)((triBoundsMin[0] - inoutField.boundsMin()[0]) * inverseCellSize);
+            int triDepthMin = (int)((triBoundsMin[2] - inoutField.boundsMin()[2]) * inverseCellSize);
+            int triWidthMax = (int)((triBoundsMax[0] - inoutField.boundsMin()[0]) * inverseCellSize);
+            int triDepthMax = (int)((triBoundsMax[2] - inoutField.boundsMin()[2]) * inverseCellSize);
+
+
+            //从论文的图示来看，三角形与矩形的交点组成的凸包最多有7个点。
+            float[] inVerts = new float[21];
+            float[] outVerts = new float[21];
+            float[] inrowVerts = new float[21];
+
+
+            float fieldHeight = inoutField.boundsMax()[1] - inoutField.boundsMin()[1]; 
+
+            //找个所有与三角形相交的体素
+            for( int depthIndex = triDepthMin; depthIndex <= triDepthMax; ++depthIndex )
+            {
+                Array.Copy(triVerts, 0, inVerts, 0, triVerts.Length);
+
+                int intermediateVertCount = 3;
+                //将体素depth坐标为 depthIndex 转变为 笛卡尔坐标的 z
+                float rowWorldZ = inoutField.boundsMin()[2]
+                    + (depthIndex * inoutField.cellSize());
+
+                //用 z = rowWorldZ的直线裁剪三角形
+                intermediateVertCount = clipPoly(inVerts,
+                    intermediateVertCount,
+                    ref outVerts,
+                    0,
+                    1,
+                    -rowWorldZ); 
+
+                if( intermediateVertCount < 3)
+                {
+                    continue; 
+                }
+
+                //用 z = -(rowWorldZ + inoutField.cellSize) 的直线裁剪三角形
+                intermediateVertCount = clipPoly(outVerts,
+                    intermediateVertCount,
+                    ref inrowVerts,
+                    0,
+                    -1,
+                    rowWorldZ + inoutField.cellSize());
+
+                if (intermediateVertCount < 3)
+                {
+                    continue;
+                }
+
+                for (int widthIndex = triWidthMin; widthIndex <= triWidthMax; ++widthIndex)
+                {
+                    int vertCount = intermediateVertCount;
+                    //将体素width坐标为 widthIndex 转变为 笛卡尔坐标的 x
+                    float colWorldX = inoutField.boundsMin()[0]
+                        + (widthIndex * inoutField.cellSize());
+
+                    //用直线 x = colWorldX的直线进行裁剪 
+                    vertCount = clipPoly(inrowVerts, vertCount, ref outVerts, 1, 0, -colWorldX);
+                    if( vertCount < 3)
+                    {
+                        continue;
+                    }
+
+                    //用直线 x = -(colWorldX + CellSize) 进行裁剪
+                    vertCount = clipPoly(outVerts,
+                        vertCount,
+                        ref inrowVerts,
+                        -1,
+                        0,
+                        colWorldX + inoutField.cellSize()); 
+
+                    if( vertCount < 3 )
+                    {
+                        continue; 
+                    }
+
+                    float heightMin = inVerts[1];
+                    float heightMax = inVerts[1]; 
+
+                    for(int i = 1; i < vertCount; ++i)
+                    {
+                        heightMin = Math.Min(heightMin, inVerts[i * 3 + 1]);
+                        heightMax = Math.Min(heightMax, inVerts[i * 3 + 1]);
+                    }
+
+                    
+                    //算出高度，这个不是位置
+                    heightMin -= inoutField.boundsMin()[1];
+                    heightMax -= inoutField.boundsMin()[1]; 
+
+                    //异常情况
+                    if(heightMax < 0.0f  || heightMin > fieldHeight)
+                    {
+                        continue;         
+                    }
+
+                    if( heightMin < 0.0f )
+                    {
+                        heightMin = inoutField.boundsMin()[1]; 
+                    }
+                    if( heightMax > fieldHeight )
+                    {
+                        heightMax = inoutField.boundsMax()[1]; 
+                    }
+
+                    //将坐标重新转换为Grid的坐标
+                    int heightIndexMin = clamp(
+                        (int)Math.Floor(heightMin * inverseCellHeight),
+                        0,
+                        short.MaxValue
+                        );
+                    int heightIndexMax = clamp(
+                        (int)Math.Ceiling(heightMax * inverseCellHeight),
+                        0,
+                        short.MaxValue 
+                        );
+
+                    inoutField.addData(widthIndex,
+                        depthIndex,
+                        heightIndexMin,
+                        heightIndexMax,
+                        polyFlags
+                        ); 
+                }
+
+            }
+
+        }
+
+        private static int clamp(int value ,int minimum,int maximum)
+        {
+            return value < minimum 
+                ? minimum : ( value > maximum ? maximum :value )  ; 
+        }
+
+
+        /* 
+         * 窗口裁剪线段算法
+         * Sutherland-Hodgman，一次用窗口的一条边裁剪多边形 ：https://en.wikipedia.org/wiki/Sutherland%E2%80%93Hodgman_algorithm
+         * 正确的算法：
+         * 遍历修剪区域的所有边，判断需要裁剪多边形的顶点，是否在对应边的内侧( d > 0 )
+         *  https://www.youtube.com/watch?v=Euuw72Ymu0M
+         *  https://www.geeksforgeeks.org/polygon-clipping-sutherland-hodgman-algorithm-please-change-bmp-images-jpeg-png/
+         *  http://www.sunshine2k.de/coding/java/SutherlandHodgman/SutherlandHodgman.html
+         *  http://www.cs.mun.ca/av/old/teaching/cg/notes/raster_clip2_inclass.pdf
+         *  
+         *  pnx ，pnz ,pd  分别对应一般式直线中的a,b,c
+         *  所以裁剪边的表达式： pnx * x + pnz * z + pd = 0 
+         */
+        private static int clipPoly(float[] inVerts,
+            int inputVertCout ,
+            ref float[] outVerts,
+            float pnx,
+            float pnz,
+            float pd)
+        {
+            /*
+            * 这是直线的一般方程式
+            * d = ax + bz + c  ====> d = pnx * vx + pnz * vz + pd
+            * 用pnx和pnz，以及pd来表示在xz平面的裁剪直线
+            * d的值，等于0，表示顶点在直线上，也就是说三角形的顶点在矩形的边上
+            * d的值，大于0，表示顶点在直线的内侧。
+            * d的值，小于0，表示顶点在直线的外侧。
+            */
+
+            float[] valuePerVert = new float[inputVertCout]; 
+            for(int vertIndex = 0; vertIndex < inputVertCout; ++vertIndex)
+            {
+                valuePerVert[vertIndex] = (pnx * inVerts[vertIndex * 3]) 
+                    + (pnz * inVerts[vertIndex * 3 + 2]) + pd; 
+            }
+
+            int m = 0; 
+            for( int current = 0 , previous = valuePerVert.Length - 1;
+                current < valuePerVert.Length;
+                 previous = current , ++current )
+            {
+                bool prevVertInside = valuePerVert[previous] >= 0;
+                bool currVertInside = valuePerVert[current] >= 0;
+
+                /* 
+                 * 两点的连线与矩形直线有交点，一个在inside，一个在outside
+                 *  
+                 */
+                if ( prevVertInside != currVertInside )
+                {
+                    //插值求交点
+                    float s = valuePerVert[previous] / (valuePerVert[previous] - valuePerVert[current]);
+                    outVerts[m * 3 + 0] = inVerts[previous * 3 + 0] + (inVerts[current * 3 + 0] - inVerts[previous * 3 + 0]) * s;
+                    outVerts[m * 3 + 1] = inVerts[previous * 3 + 1] + (inVerts[current * 3 + 1] - inVerts[previous * 3 + 1]) * s;  //y轴有必要裁剪吗？？？这是二维的吧
+                    outVerts[m * 3 + 2] = inVerts[previous * 3 + 2] + (inVerts[current * 3 + 2] - inVerts[previous * 3 + 2]) * s;
+                    m++; 
+                }
+                //如果前面是prev是inside的话，那么currVertInside必然是outside
+                if( currVertInside )
+                {
+                    outVerts[m * 3 + 0] = inVerts[current * 3 + 0];
+                    outVerts[m * 3 + 1] = inVerts[current * 3 + 0];
+                    outVerts[m * 3 + 2] = inVerts[current * 3 + 0];
+                    m++;
+                }
+            }
+
+            return m;
         }
 
         //vertices是以3为一组，因为是按 x,y,z,x1,y1,z1,x2,y2,z2这样储存的
