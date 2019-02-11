@@ -1,22 +1,22 @@
 ﻿using UnityEngine;
-using System.Collections;
+using NMGen; 
 
 namespace NMGenVisual
 {
     public class VBoundedField : MonoBehaviour
     {
+        [SerializeField]
+        private Bounds mRefBounds; 
+       
 
-        // Use this for initialization
-        void Start()
+        public virtual void SetData( BoundeField fieldData )
         {
 
         }
+       
 
-        // Update is called once per frame
-        void Update()
-        {
 
-        }
+        
     }
 
 }
