@@ -1,4 +1,5 @@
-﻿using System; 
+﻿using System;
+using Utility.Logger; 
 
 namespace NMGen
 {
@@ -42,7 +43,8 @@ namespace NMGen
         {
             if( !isBoundsValid(gridBoundsMin,gridBoundsMax) )
             {
-                throw new Exception("One or both bounds are invalid."); 
+                Logger.LogError("[BoundedField][ctor]one or both bounds invalid");
+                return;
             }
 
             Array.Copy(gridBoundsMin,0, mBoundsMin,0, 3);

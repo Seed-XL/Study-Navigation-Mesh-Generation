@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using Utility.Logger;  
 
 
 namespace NMGen
@@ -8,143 +9,7 @@ namespace NMGen
     //代表AABB中不可行走的区域
     public class SolidHeightfield : BoundeField,IEnumerable
     {
-        #region iterator define
-
-        public class SolidHeightFieldIterator : IEnumerator
-        {
-            private int mNextWidth = 0;
-            private int mNextDepth = 0;
-            private HeightSpan mNext = null;
-
-            private int mLastWidth = 0;
-            private int mLastDepth = 0;
-
-            private SolidHeightfield mSoldHeightfield = null;
-
-            object IEnumerator.Current
-            {
-                get
-                {
-                    return Current; 
-                }
-            }
-
-            public HeightSpan Current
-            {
-                get
-                {
-                    //may be null 
-                    return mNext; 
-                }
-            }
-
-            public SolidHeightFieldIterator( SolidHeightfield field )
-            {
-                if( field == null )
-                {
-                    throw new Exception("[SolidHeightfield][SolidHeightFieldIterator]field Empty"); 
-                }
-
-                mSoldHeightfield = field;  
-
-                //这是Java的操作，C#还是用回C#吧
-                //MoveNext();      
-            } 
-            
-            public int depthIndex()
-            {
-                return mLastDepth; 
-            }
-
-            public int widthIndex()
-            {
-                return mLastWidth; 
-            }
-
-            public bool hasNext()
-            {
-                return mNext != null; 
-            }
-
-            public HeightSpan next()
-            {
-                if( mNext == null )
-                {
-                    throw new Exception("[SolidHeightfield][SolidHeightFieldIterator][next]Empty"); 
-                }
-
-                HeightSpan next = mNext;
-                mLastWidth = mNextWidth;
-                mLastDepth = mNextDepth;
-                MoveNext();
-
-                return next;
-            }
-
-         
-            public void Reset()
-            {
-                mNextWidth = 0;
-                mNextDepth = 0;
-                mNext = null;
-                mLastWidth = 0;
-                mLastDepth = 0;
-                MoveNext(); 
-            }
-
-            public bool MoveNext()
-            {
-                if( mNext != null )
-                {
-                    //下一个的下一个
-                    if( mNext.next() != null )
-                    {
-                        mNext = mNext.next();
-                        return true; 
-                    }
-                    else
-                    {
-                        //当前列已经没有下一个，移动到下一个Grid
-                        mNextWidth++;  //寻找x方向的下一个
-                    }
-                }
-
-                if( mSoldHeightfield != null )
-                {
-                    for (int depthIndex = mNextDepth; depthIndex < mSoldHeightfield.depth(); depthIndex++)
-                    {
-                        for( int widthIndex = mNextWidth; widthIndex < mSoldHeightfield.width(); widthIndex++ )
-                        {
-                            int gridIndex = mSoldHeightfield.GetGridIndex(widthIndex, depthIndex);
-                            HeightSpan span = mSoldHeightfield.mSpans[gridIndex]; 
-
-                            if( span != null )
-                            {
-                                mNext = span;
-                                mNextWidth = widthIndex;
-                                mNextDepth = depthIndex;
-                                return true ; 
-                            }
-
-                        }
-                        mNextWidth = 0; 
-                    }
-                }
-
-                mNext = null;
-                mNextDepth = -1;
-                mNextWidth = -1;
-
-                return false;  
-            }
-
-
-
-        }
-
-        #endregion
-
-        //记录每个Grid对应的列中，最矮的那一个Span
+        //记录x-z平面中的Grid对应的y方向上Span列表中，最矮的那一个Span
         private Dictionary<int, HeightSpan> mSpans = new Dictionary<int, HeightSpan>();
 
         public SolidHeightfield(float cellSize,float cellHeight) : base(cellSize, cellHeight)
@@ -152,6 +17,12 @@ namespace NMGen
 
         }
 
+        /// <summary>
+        /// 获取Grid对应的最矮Span
+        /// </summary>
+        /// <param name="widthIndex"></param>
+        /// <param name="depthIndex"></param>
+        /// <returns></returns>
         public HeightSpan getData(int widthIndex,int depthIndex)
         {
             HeightSpan retSpan = null;
@@ -171,6 +42,7 @@ namespace NMGen
                 || depthIndex < 0
                 || depthIndex >= depth())
             {
+                Logger.LogWarning("[SolidHeightfield][addData]width|depth|{0}|{1}|{2}|{3}"); 
                 return false; 
             }
 
@@ -179,6 +51,7 @@ namespace NMGen
                 || heightIndexMax < 0 
                 || heightIndexMin > heightIndexMax)
             {
+                Logger.LogWarning("[SolidHeightfield][addData]heightMin|heightMax|{0}|{1}|{2}|{3}");
                 return false; 
             }
 
@@ -203,7 +76,18 @@ namespace NMGen
             while( currentSpan != null  )
             {
                 //最小比最大还大，不重叠
-                if( currentSpan.min() > heightIndexMax + 1 )
+                //
+                /*
+                 *  
+                 *     -  currentMin
+                 *     -  heigtMax
+                 *     -
+                 *     -  
+                 *     -
+                 *     -  heightMin 
+                 *  
+                 */
+                if( currentSpan.min() > heightIndexMax + 1 )  //加1的理由看上图，低闭高开
                 {
                     HeightSpan newSpan = new HeightSpan(heightIndexMin, heightIndexMax, flags);
                     newSpan.setNext(currentSpan);   //newSpan更加矮
@@ -320,6 +204,118 @@ namespace NMGen
         {
             return new SolidHeightFieldIterator(this); 
         }
+
+        #region iterator define
+
+        public class SolidHeightFieldIterator : IEnumerator
+        {
+            private int mNextWidth = 0;
+            private int mNextDepth = 0;
+            private HeightSpan mNext = null;
+
+            private int mLastWidth = 0;
+            private int mLastDepth = 0;
+
+            private SolidHeightfield mSoldHeightfield = null;
+
+            object IEnumerator.Current
+            {
+                get
+                {
+                    return Current;
+                }
+            }
+
+            public HeightSpan Current
+            {
+                get
+                {
+                    //may be null 
+                    return mNext;
+                }
+            }
+
+            public SolidHeightFieldIterator(SolidHeightfield field)
+            {
+                if (field == null)
+                {
+                    Logger.LogError("[SolidHeightFieldIterator][ctor]filed Empty");
+                    return;
+                }
+
+                mSoldHeightfield = field;
+
+                Reset();
+            }
+
+            public int depthIndex()
+            {
+                return mLastDepth;
+            }
+
+            public int widthIndex()
+            {
+                return mLastWidth;
+            }
+
+
+            public void Reset()
+            {
+                mNextWidth = 0;
+                mNextDepth = 0;
+                mNext = null;
+                mLastWidth = 0;
+                mLastDepth = 0;
+            }
+
+            public bool MoveNext()
+            {
+                if (mNext != null)
+                {
+                    //下一个的下一个
+                    if (mNext.next() != null)
+                    {
+                        mNext = mNext.next();
+                        return true;
+                    }
+                    else
+                    {
+                        //当前列已经没有下一个，移动到下一个Grid
+                        mNextWidth++;  //寻找x方向的下一个
+                    }
+                }
+
+                if (mSoldHeightfield != null)
+                {
+                    for (int depthIndex = mNextDepth; depthIndex < mSoldHeightfield.depth(); depthIndex++)
+                    {
+                        for (int widthIndex = mNextWidth; widthIndex < mSoldHeightfield.width(); widthIndex++)
+                        {
+                            int gridIndex = mSoldHeightfield.GetGridIndex(widthIndex, depthIndex);
+                            HeightSpan span = mSoldHeightfield.mSpans[gridIndex];
+
+                            if (span != null)
+                            {
+                                mNext = span;
+                                mNextWidth = widthIndex;
+                                mNextDepth = depthIndex;
+                                return true;
+                            }
+
+                        }
+                        mNextWidth = 0;
+                    }
+                }
+
+                mNext = null;
+                mNextDepth = -1;
+                mNextWidth = -1;
+
+                return false;
+            }
+        }
+
+        #endregion
 
     }
 }
