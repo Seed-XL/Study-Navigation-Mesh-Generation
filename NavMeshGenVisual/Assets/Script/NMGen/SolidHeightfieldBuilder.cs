@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using Utility.Logger;
 
 namespace NMGen
 {
@@ -69,11 +70,13 @@ namespace NMGen
                 || vertices.Length % 3 != 0 
                 || indices.Length % 3 != 0)
             {
+                Logger.LogError("[SolidHeightfieldBuilder][build]invalid"); 
                 return null; 
             }
 
             SolidHeightfield result = new SolidHeightfield(mCellSize, mCellHeight);
 
+            //用作分母，方便后面计算的
             float inverseCellSize = 1 / result.cellSize();
             float inverseCellHeight = 1 / result.cellHeight();
 
@@ -102,6 +105,7 @@ namespace NMGen
             //判断哪些多边形的表面是可以行走的,坡度不能太大
             int[] polyFlags = markInputMeshWalkableFlags(vertices, indices);
 
+            //开始对每个面进行体素化
             int polyCount = indices.Length / 3;  
             for(int iPoly = 0; iPoly < polyCount; iPoly++)
             {
@@ -273,6 +277,7 @@ namespace NMGen
             }
 
             //将三角形的坐标转换成对应的cell坐标系,就是具体对应到哪个width和depth的Column  
+            //这里其实我有点疑惑，一个标题除以标题，得到的竟然是一个索引，这不太科学
             int triWidthMin = (int)((triBoundsMin[0] - inoutField.boundsMin()[0]) * inverseCellSize);
             int triDepthMin = (int)((triBoundsMin[2] - inoutField.boundsMin()[2]) * inverseCellSize);
             int triWidthMax = (int)((triBoundsMax[0] - inoutField.boundsMin()[0]) * inverseCellSize);
@@ -293,7 +298,8 @@ namespace NMGen
                 Array.Copy(triVerts, 0, inVerts, 0, triVerts.Length);
 
                 int intermediateVertCount = 3;
-                //将体素depth坐标为 depthIndex 转变为 笛卡尔坐标的 z
+                //将体素depth坐标为 depthIndex 转变为 笛卡尔坐标的 z.
+                //其实就是从体素坐标系转变为 笛卡尔坐标系
                 float rowWorldZ = inoutField.boundsMin()[2]
                     + (depthIndex * inoutField.cellSize());
 
@@ -360,22 +366,25 @@ namespace NMGen
                     }
 
                     
-                    //算出高度，这个不是位置
+                    //heigtMin和heighMax都是坐标，所以需要将其转换成相对于 inoutField 地板的高度,也就是一个标量
                     heightMin -= inoutField.boundsMin()[1];
                     heightMax -= inoutField.boundsMin()[1]; 
 
                     //异常情况
                     if(heightMax < 0.0f  || heightMin > fieldHeight)
                     {
+                        Logger.LogWarning("[SolidHeightfieldBuilder][voxelizeTriangle]Invalid|{0}|{1}|{2}|{3}|{4}",widthIndex,depthIndex,heightMin,heightMax,fieldHeight); 
                         continue;         
                     }
 
                     if( heightMin < 0.0f )
                     {
+                        Logger.LogWarning("[SolidHeightfieldBuilder][voxelizeTriangle]heigtMin Change|{0}|{1}|{2}|{3}|", widthIndex, depthIndex, heightMin, inoutField.boundsMin()[1]);
                         heightMin = inoutField.boundsMin()[1]; 
                     }
                     if( heightMax > fieldHeight )
                     {
+                        Logger.LogWarning("[SolidHeightfieldBuilder][voxelizeTriangle]heightMax Change|{0}|{1}|{2}|{3}|", widthIndex, depthIndex, heightMax, fieldHeight,inoutField.boundsMin()[1]);
                         heightMax = inoutField.boundsMax()[1]; 
                     }
 
@@ -422,6 +431,7 @@ namespace NMGen
          *  
          *  pnx ，pnz ,pd  分别对应一般式直线中的a,b,c
          *  所以裁剪边的表达式： pnx * x + pnz * z + pd = 0 
+         *  这里是直接忽略了y坐标的，所以可以看作是在xz面上投影的裁剪
          */
         private static int clipPoly(float[] inVerts,
             int inputVertCout ,
@@ -486,7 +496,7 @@ namespace NMGen
             //总有多少个三角形
             int polyCount = indices.Length / 3;
 
-            //每三个值为一个点
+            //每个面对应一个flag
             int[] flags = new int[polyCount];
 
             float[] diffAB = new float[3];
@@ -494,13 +504,17 @@ namespace NMGen
             float[] crossDiff = new float[3];
 
            
-            for(int iPoly = 0;iPoly < polyCount; iPoly++ )
+            for(int iPoly = 0 ; iPoly < polyCount; iPoly++ )
             {
-                //分别求出一个三角形的三个点,后面乘以3，是因为vertices的是以xyz x1y1z1这样储存的
+                //indices储存的是顶点的索引,三个一组，组成一个面。这就是iPoly * 3的原因，步进为3。
+                //一个点，占三个索引，分别对应xyz，三个点要占9个索引。分别是x1y1z1,x2y2z2,x3y3z3。
+                //每个顶点占三个，一个面占9个,vertices里面就是这样的储存方式的。indices数组储存的也是
+                //顶点数组的下标值 ，因此按步进3来算，取一下个面的点，也需要 * 3 ，这就是外层 * 3 的原因。
                 int pVertA = indices[iPoly * 3] * 3;
                 int pVertB = indices[iPoly * 3 + 1] * 3;
                 int pVertC = indices[iPoly * 3 + 2] * 3;
 
+                //叉乘获得面的法线
                 float[] polyNormal = cross( subtract(pVertB,pVertA,vertices,ref diffAB),
                     subtract(pVertC, pVertA, vertices, ref diffAC),ref crossDiff
                     );

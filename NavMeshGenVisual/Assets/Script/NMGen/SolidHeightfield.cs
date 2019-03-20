@@ -30,6 +30,16 @@ namespace NMGen
             return retSpan; 
         }
 
+        /// <summary>
+        /// 注意这个添加Span的参数，heightIndexMin和heightIndexMax貌似
+        /// 都变成了Span的闭区间
+        /// </summary>
+        /// <param name="widthIndex"></param>
+        /// <param name="depthIndex"></param>
+        /// <param name="heightIndexMin"></param>
+        /// <param name="heightIndexMax"></param>
+        /// <param name="flags"></param>
+        /// <returns></returns>
         public bool addData( int widthIndex,
             int depthIndex,
             int heightIndexMin,
