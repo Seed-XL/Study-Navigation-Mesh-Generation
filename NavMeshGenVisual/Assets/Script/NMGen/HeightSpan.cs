@@ -6,9 +6,9 @@ namespace NMGen
     //代表在y轴方向上某一列连续的体素
     public class HeightSpan
     {
-        //从图上，这两个值有点像Bound Min 和 Max ，并不是指索引，有点像 [ )，就是低闭，高开区间
-        // min指的是Span最低点的索引
-        // max指的是与Span紧接着的下一个voxel的索引
+        //以体素坐标系为参考。
+        //分别代表Span里，在y方向上，最底那个Span属于的索引，最高那个Span属于的索引。
+        //因为需要向上取整，所以左右都是闭区间，也就是[mMinmum,mMaxmum]
         private int mMinmum;   
         private int mMaxmum;   
         private int mFlags = 0; 

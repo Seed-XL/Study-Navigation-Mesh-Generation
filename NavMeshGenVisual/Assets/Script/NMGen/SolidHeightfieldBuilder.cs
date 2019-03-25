@@ -129,6 +129,10 @@ namespace NMGen
         }
 
 
+        /// <summary>
+        /// 边缘裁剪，那种像断崖式的Span也不可走的
+        /// </summary>
+        /// <param name="field"></param>
         private void markLedgeSpans(SolidHeightfield field)
         {
             SolidHeightfield.SolidHeightFieldIterator iter = field.GetEnumerator(); 
@@ -162,8 +166,9 @@ namespace NMGen
                     HeightSpan nSpan = field.getData(nWidthIndex, nDepthIndex); 
                     if( null == nSpan )
                     {
+                        //TODO 这里没有搞懂为啥是 -mMaxTraversableStep - currFloor,是为了比-mMaxTraversableStep更小，以便直接判断不能行走吗？
                         // 用大可行的距离，再减去currFloor，得到的肯定是一个更小的值。
-                        // currFloor - mMaxTraversableStep 是一个最大落差可选地板。
+                        // currFloor - mMaxTraversableStep 是一个最大允许的落差地板距离。注意这里只考虑下落的情况
                         minDistanceToNeighbor = Math.Min(minDistanceToNeighbor, -mMaxTraversableStep - currFloor);
                         continue; 
                     }
@@ -171,13 +176,14 @@ namespace NMGen
 
                     /* 
                     *  先考虑一种特殊情况 ，那就是
-                    *  那就是nSpan.min也比nSpan.min也比currFloor要高，那么对应的
+                    *  那就是nSpan.min也比currFloor要高，那么对应的
                     *  的邻居相当于也是没有Floor的，所以默认取-mMaxTraversableStep吧。
                     */
 
                     int nFloor = -mMaxTraversableStep;
                     int nCeiling = nSpan.min(); 
 
+                    //当前Span所处列的currCeiling和邻居的nCeiling相比，取最低的
                     if( Math.Min(currCeiling,nCeiling) - currFloor > mMinTraversableHeight)
                     {
                         minDistanceToNeighbor = Math.Min(minDistanceToNeighbor, (nFloor - currFloor));
@@ -197,6 +203,7 @@ namespace NMGen
 
                 }
 
+                //如果最近的距离比较最大掉落还小的放在，那么就是不可行走的
                 if(minDistanceToNeighbor < -mMaxTraversableStep)
                 {
                     span.setFlags(span.flags() & ~SpanFlags.WALKABLE); 
@@ -204,6 +211,10 @@ namespace NMGen
             }
         }
 
+        /// <summary>
+        /// 确保垂直方向上两个Span之间的区域不会卡头
+        /// </summary>
+        /// <param name="field"></param>
         private void markLowHeightSpans(SolidHeightfield field)
         {
             SolidHeightfield.SolidHeightFieldIterator iter = field.GetEnumerator(); 
@@ -216,7 +227,7 @@ namespace NMGen
                     continue; 
                 }
 
-                int spanFloor = span.max();
+                int spanFloor = span.max(); //SolidSpan的max，其实就是OpenSpan的底部
                 int spanCeiling = (span.next() != null)
                     ? span.next().min() : int.MaxValue; 
 
@@ -370,7 +381,6 @@ namespace NMGen
                     heightMin -= inoutField.boundsMin()[1];
                     heightMax -= inoutField.boundsMin()[1]; 
 
-                    //异常情况
                     if(heightMax < 0.0f  || heightMin > fieldHeight)
                     {
                         Logger.LogWarning("[SolidHeightfieldBuilder][voxelizeTriangle]Invalid|{0}|{1}|{2}|{3}|{4}",widthIndex,depthIndex,heightMin,heightMax,fieldHeight); 
@@ -388,7 +398,7 @@ namespace NMGen
                         heightMax = inoutField.boundsMax()[1]; 
                     }
 
-                    //将坐标重新转换为Grid的坐标
+                    //将坐标重新转换为Grid的坐标，其实也是表示这三角面最低点和最高点，分别属于哪两个体素
                     int heightIndexMin = clamp(
                         (int)Math.Floor(heightMin * inverseCellHeight),
                         0,
