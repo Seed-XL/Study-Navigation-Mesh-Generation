@@ -1,4 +1,5 @@
 ﻿using System;
+using Utility.Logger; 
 
 namespace NMGen
 {
@@ -26,11 +27,13 @@ namespace NMGen
         {
             if( floor < 0 )
             {
-                throw new Exception("Floos is less than zero.");
+                Logger.LogError("[OpenHeightSpan][ctor]Floos is less than zero|{0}",floor);
+                return; 
             }
             if( height < 1 ) 
             {
-                throw new Exception("Height is less than one.");
+                Logger.LogError("[OpenHeightSpan][ctor]Height is less than one.|{0}",height);
+                return; 
             }
 
             mFloor = floor;
