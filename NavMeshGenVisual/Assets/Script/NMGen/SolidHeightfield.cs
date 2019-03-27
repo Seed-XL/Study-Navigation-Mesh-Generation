@@ -52,7 +52,7 @@ namespace NMGen
                 || depthIndex < 0
                 || depthIndex >= depth())
             {
-                Logger.LogWarning("[SolidHeightfield][addData]width|depth|{0}|{1}|{2}|{3}"); 
+                Logger.LogWarning("[SolidHeightfield][addData]width|depth|{0}|{1}|{2}|{3}",widthIndex,depthIndex,heightIndexMin,heightIndexMax); 
                 return false; 
             }
 
@@ -61,7 +61,7 @@ namespace NMGen
                 || heightIndexMax < 0 
                 || heightIndexMin > heightIndexMax)
             {
-                Logger.LogWarning("[SolidHeightfield][addData]heightMin|heightMax|{0}|{1}|{2}|{3}");
+                Logger.LogWarning("[SolidHeightfield][addData]heightMin|heightMax|{0}|{1}|{2}|{3}", widthIndex, depthIndex, heightIndexMin, heightIndexMax);
                 return false; 
             }
 

@@ -3,7 +3,9 @@ using Utility.Logger;
 
 namespace NMGen
 {
-    //代表在y轴方向上某一列连续的体素
+    /// <summary>
+    /// 代表在y轴方向上某一列连续的体素，准备来说是给封闭的高度域使用的
+    /// </summary>
     public class HeightSpan
     {
         //以体素坐标系为参考。

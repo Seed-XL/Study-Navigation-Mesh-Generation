@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-
+using Utility.Logger; 
 
 namespace NMGen
 {
@@ -23,11 +23,12 @@ namespace NMGen
             private OpenHeightfield mOpenHeightfield = null;
 
 
-            private OpenHeightFieldIterator( OpenHeightfield field )
+            public OpenHeightFieldIterator( OpenHeightfield field )
             {
                 if (field == null)
                 {
-                    throw new Exception("[SolidHeightfield][OpenHeightFieldIterator]field Empty");
+                    Logger.LogError("[SolidHeightfield][OpenHeightFieldIterator]field Empty");
+                    return; 
                 }
 
                 mOpenHeightfield = field;
@@ -35,16 +36,50 @@ namespace NMGen
                 Reset(); 
             }
 
-
-
-            public void MoveNext()
+            object IEnumerator.Current
             {
+                get
+                {
+                    return Current;
+                }
+            }
+
+            public OpenHeightSpan Current
+            {
+                get
+                {
+                    //may be null 
+                    return mNext;
+                }
+            }
+
+            public int depthIndex()
+            {
+                return mLastDepth;
+            }
+
+
+            public int widthIndex()
+            {
+                return mLastWidth; 
+            }
+
+
+            public bool MoveNext()
+            {
+                if( mOpenHeightfield == null  )
+                {
+                    Logger.LogError("[OpenHeightfield][OpenHeightFieldIterator][MoveNext]Null");
+                    return false ; 
+                }
+
+
                 if( mNext != null  )
                 {
                     if( mNext.next() != null  )
                     {
                         mNext = mNext.next();
-                        return; 
+                        return true ; 
                     }
                     else
                     {
@@ -60,38 +95,26 @@ namespace NMGen
                         widthIndex < mOpenHeightfield.width(); 
                         widthIndex++)
                     {
-                        //OpenHeightSpan span = mOpenHeightfield.
+                        OpenHeightSpan span = mOpenHeightfield.getData(widthIndex, depthIndex);
+                        if( span != null )
+                        {
+                            mNext = span;
+                            mNextWidth = widthIndex;
+                            mNextDepth = depthIndex;
+                            return true ; 
+                        }
                     }
-                }
-               
-            }
-
-            public OpenHeightSpan next()
-            {
-                if( mNext == null )
-                {
-                    throw new Exception("[OpenHeightfield][OpenHeightFieldIterator][next]Empty");
+                    mNextWidth = 0; 
                 }
 
-                OpenHeightSpan next = mNext;
-                mLastWidth = mNextWidth;
-                mLastDepth = mNextDepth;
+                mNext = null;
+                mNextDepth = -1;
+                mNextWidth = -1;
 
-                //moveToNext();
-                return next; 
+                return false;
             }
 
-            public bool hasNext()
-            {
-                return mNext != null; 
-            }
-      
-
-            public int depthIndex()
-            {
-                return mLastDepth; 
-            }
-
+          
             public void Reset()
             {
                 mNextWidth = 0;
@@ -106,5 +129,162 @@ namespace NMGen
 
         #endregion
 
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        public OpenHeightFieldIterator GetEnumerator()
+        {
+            return new OpenHeightFieldIterator(this);
+        }
+
+        private static readonly int UNKNOWN = -1;
+
+        private int mSpanCount = 0;
+        private int mRegionCount = 0;
+
+        private int mMaxBorderDistance = UNKNOWN;
+        private int mMinBorderDistance = UNKNOWN;
+
+
+        //记录x-z平面中的Grid对应的y方向上Span列表中，最矮的那一个Span
+        private Dictionary<int, OpenHeightSpan> mSpans = new Dictionary<int, OpenHeightSpan>();
+
+
+        public OpenHeightfield(float[]  gridBoundsMin,
+            float[] gridBoundsMax ,
+            float cellSize,
+            float cellHeight):base(gridBoundsMin,gridBoundsMax,cellSize,cellHeight)
+        {
+   
+        }
+
+        public bool addData(int widthIndex,int depthIndex,OpenHeightSpan span)
+        {
+            if (widthIndex < 0
+                  || widthIndex >= width()
+                  || depthIndex < 0
+                  || depthIndex >= depth() )
+            {
+                Logger.LogWarning("[OpenHeightfield][addData]width|depth|{0}|{1}|{2}|{3}",widthIndex,depthIndex,width(),depth());
+                return false;
+            }
+
+            if ( mSpans == null || span == null )
+            {
+                Logger.LogWarning("[OpenHeightfield][addData]mSpan or Span null|{0}|{1}|{2}|{3}", widthIndex, depthIndex, width(), depth());
+                return false;
+            }
+
+            int gridIndex = GetGridIndex(widthIndex, depthIndex);
+            OpenHeightSpan currentSpan;
+            if (!mSpans.TryGetValue(gridIndex, out currentSpan))
+            {
+                mSpans.Add(gridIndex,span);
+                return true;
+            }
+            else
+            {
+                Logger.LogWarning("[OpenHeightfield][addData]Span already in|{0}|{1}|{2}|{3}", widthIndex, depthIndex, width(), depth());
+                return false;
+            }
+        }
+
+        public void clearBorderDistanceBounds()
+        {
+            mMaxBorderDistance = UNKNOWN;
+            mMinBorderDistance = UNKNOWN; 
+        }
+
+        public OpenHeightSpan getData(int widthIndex,int depthIndex)
+        {
+            OpenHeightSpan retSpan = null;
+            if( mSpans != null )
+            {
+                mSpans.TryGetValue(GetGridIndex(widthIndex, depthIndex), out retSpan); 
+            }
+            return retSpan; 
+        }
+
+        public int incrementSpanCount()
+        {
+            return ++mSpanCount;
+        }
+      
+
+        public int maxBorderDistance()
+        {
+            if(mMaxBorderDistance == UNKNOWN)
+            {
+                calcBorderDistanceBounds(); 
+            }
+            return mMaxBorderDistance; 
+        }
+
+        public void printDistanceField()
+        {
+            Logger.Log("[OpenHeightfield][printDistanceField]Log Start");
+            Logger.Log("[OpenHeightfield][printDistanceField]Distance Field Spans|{0}",mSpanCount);
+           
+            int depth = -1;
+            Logger.Log("\t"); 
+            for (int width = 0; width < this.width(); ++width)
+            {
+                Logger.Log("{0}\t", width);
+            }
+
+            OpenHeightFieldIterator iter = GetEnumerator();
+            while( iter.MoveNext() )
+            {
+                OpenHeightSpan span = iter.Current; 
+                if( iter.depthIndex() != depth )
+                {
+                    Logger.LogWarning("\n{0}\t", ++depth);
+                }
+                Logger.Log("{0}\t", span.distanceToBorder());
+            }
+
+            Logger.Log("[OpenHeightfield][printDistanceField]Log End");  
+        }
+
+        public int regionCount()
+        {
+            return mRegionCount; 
+        }
+
+        public void setRegionCount(int value)
+        {
+            mRegionCount = value; 
+        }
+
+        public int spanCount()
+        {
+            return mSpanCount; 
+        }
+
+        private void calcBorderDistanceBounds()
+        {
+            if( 0 == mSpanCount )
+            {
+                return; 
+            }
+
+            mMinBorderDistance = int.MaxValue;
+            mMaxBorderDistance = UNKNOWN;
+
+            OpenHeightFieldIterator iter = GetEnumerator(); 
+            while( iter.MoveNext()  )
+            {
+                OpenHeightSpan span = iter.Current;
+                mMinBorderDistance = Math.Min(mMinBorderDistance, span.distanceToBorder());
+                mMaxBorderDistance = Math.Max(mMaxBorderDistance, span.distanceToBorder()); 
+            }
+
+            if( mMinBorderDistance == int.MaxValue )
+            {
+                mMinBorderDistance = UNKNOWN;  
+            }
+        }
     }
 }

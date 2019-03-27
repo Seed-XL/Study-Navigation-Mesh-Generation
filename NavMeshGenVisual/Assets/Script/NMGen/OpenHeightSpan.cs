@@ -3,6 +3,10 @@ using Utility.Logger;
 
 namespace NMGen
 {
+
+    /// <summary>
+    /// 相对于封闭的实体高度域，这个是封装开放的Span
+    /// </summary>
     public class OpenHeightSpan
     {
         public static readonly int NULL_REGION = 0;

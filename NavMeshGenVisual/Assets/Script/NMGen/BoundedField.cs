@@ -43,7 +43,7 @@ namespace NMGen
         {
             if( !isBoundsValid(gridBoundsMin,gridBoundsMax) )
             {
-                Logger.LogError("[BoundedField][ctor]one or both bounds invalid");
+                Logger.LogError("[BoundedField][ctor]one or both bounds invalid|{0}|{1}|{2}|{3}",cellSize, cellHeight,gridBoundsMin,gridBoundsMax);
                 return;
             }
 
@@ -260,6 +260,9 @@ namespace NMGen
         private void calculateWidthDepth()
         {
             mWidth = (int)((mBoundsMax[0] - mBoundsMin[0]) / mCellSize + 0.5f);
+            mDepth = (int)((mBoundsMax[2] - mBoundsMin[2]) / mCellSize + 0.5f);
+
+            Logger.Log("[BoundedField][calculateWidthDepth]{0}|{1}", mWidth, mDepth);  
         }
 
     }
