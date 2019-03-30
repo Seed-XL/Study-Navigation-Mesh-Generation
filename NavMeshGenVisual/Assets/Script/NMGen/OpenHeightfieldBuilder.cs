@@ -147,8 +147,89 @@ namespace NMGen
                     if( null == nSpan
                         || nSpan.getNeighbor(dir == 3 ? 0 : dir + 1) == null) 
                     {
-
+                        //如果8个邻居之路有任何一个缺失的话，那么就是边界Border
+                        isBorder = true;
+                        break;
                     }
+                }
+
+                if( isBorder )
+                {
+                    //自己就是边界Border
+                    span.setDistanceToBorder(BORDER); 
+                }
+                else
+                {
+                    //需要再次计算
+                    span.setDistanceToBorder(NEEDS_INIT);
+                }
+            } //while
+
+
+            /*
+             * 逆时针访问？
+             *     
+             *    (-1,1)  (0,1)  (1,1)
+             *    (-1,0)    x    (1,0)
+             *    (-1,-1) (0,-1) (1,-1)
+             */
+
+            iter.Reset(); 
+            while( iter.MoveNext() )
+            {
+                OpenHeightSpan span = iter.Current;
+                int selfDist = span.distanceToBorder(); 
+
+                if( selfDist == BORDER)
+                {
+                    continue; 
+                }
+
+                //(-1,0)
+                OpenHeightSpan nSpan = span.getNeighbor(0);
+                int nDist = nSpan.distanceToBorder(); 
+                
+                //邻居不是边界Border，但是它也不知道自己离边界Border有多远
+                if( nDist == NEEDS_INIT )
+                {
+                    //TODO 跑起来的时候需要改一下这个
+                    /*
+                     * 为什么不是dist=2呢？因为我觉得nSpan既然不是Border，
+                     * 那么它的8个领域必须都存在，那么它离Border的距离
+                     * 最起码应该是 >= 2的，因为中间间隔了一个它的领域单位。
+                     * Github上源码可是没这一段的哦??????
+                     */
+                    selfDist = 1; 
+                }
+                else
+                {
+                    /*
+                     * 这里有两种情况 ，一个是领域不是Border并且已经知道它离
+                     * Border的距离。一个情况就是他本身就是Border。
+                     * 如果领域已经知道它离Border的距离，那为什么不是加1就好呢?
+                     * 卧槽 ，我没搞懂。。。
+                     */
+                    selfDist = nDist + 2; 
+                }
+
+
+                //(-1,-1),左下角的领域
+                nSpan = nSpan.getNeighbor(3); //领域0的领域3，也就是原Span的左下角
+                if( nSpan != null )  //这一行多余的吧，既然已经确定Span不是Border，那么这个nSpan必然存在 
+                {
+                    nDist = nSpan.distanceToBorder(); 
+                    if( nDist == NEEDS_INIT )
+                    {
+                        nDist = 2; 
+                    }
+                    else
+                    {
+                        nDist += 3; 
+                    }
+                }
+                else
+                {
+                    Logger.LogWarning("[OpenHeightfieldBuilder][generateDistanceField](-1,-1) not exist ?"); 
                 }
             }
 
