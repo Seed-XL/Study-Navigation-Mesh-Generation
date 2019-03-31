@@ -115,6 +115,60 @@ namespace NMGen
             return result; 
         }
 
+        public void blurDistanceField(OpenHeightfield field)
+        {
+            if( null == field )
+            {
+                return; 
+            }
+
+            if( mSmoothingThreshold <= 0 )
+            {
+                return; 
+            }
+
+            //Span => Distance
+            Dictionary<OpenHeightSpan, int> blurResults = new Dictionary<OpenHeightSpan, int>();
+
+            OpenHeightfield.OpenHeightFieldIterator iter = field.GetEnumerator(); 
+            while( iter.MoveNext() )
+            {
+                OpenHeightSpan span = iter.Current;
+                int origDist = span.distanceToBorder(); 
+                if( origDist <= mSmoothingThreshold )
+                {
+                    blurResults.Add(span, mSmoothingThreshold);
+                    continue; 
+                }
+
+                int workingDist = origDist; 
+                //将9个格子的距离加起来
+                for(int dir = 0; dir < 4; ++dir)
+                {
+                    OpenHeightSpan nSpan = span.getNeighbor(dir); 
+                    if( null == nSpan )
+                    {
+                        //
+                        workingDist += origDist * 2; 
+                    }
+                    else
+                    {
+                        workingDist += nSpan.distanceToBorder();
+                        nSpan = nSpan.getNeighbor( (dir+1) & 0x3 ); 
+                        if( null == nSpan )
+                        {
+                            workingDist += origDist; 
+                        }
+                        else
+                        {
+                            workingDist += nSpan.distanceToBorder();  
+                        }
+                    }
+                }
+            }
+
+        }
+
         /* 参考 ：http://www.cnblogs.com/wantnon/p/4947067.html 
         *       http://fab.cba.mit.edu/classes/S62.12/docs/Meijster_distance.pdf
         * 具体算法名：Saito算法
@@ -245,7 +299,10 @@ namespace NMGen
                 nSpan = nSpan.getNeighbor(0);
                 selfDist = calcMiniDistanceToBorder(selfDist, nSpan, false);
 
+                span.setDistanceToBorder(selfDist); 
             }
+
+            field.clearBorderDistanceBounds(); 
         }
 
         /// <summary>
