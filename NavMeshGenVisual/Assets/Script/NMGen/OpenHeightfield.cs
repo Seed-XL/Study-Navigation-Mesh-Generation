@@ -10,20 +10,18 @@ namespace NMGen
     {
         #region iterator define
 
-        public class OpenHeightFieldIterator : IEnumerator
+        public class OpenHeightFieldIterator : IEnumerator , IHeightFieldIterInterface
         {
             private int mNextWidth;
             private int mNextDepth;
 
             private OpenHeightSpan mNext;
 
-            private int mLastWidth;
-            private int mLastDepth;
-
             private OpenHeightfield mOpenHeightfield = null;
 
+            private bool mIsReverseIter = false; 
 
-            public OpenHeightFieldIterator( OpenHeightfield field )
+            public OpenHeightFieldIterator( OpenHeightfield field ,bool isInitReverseIter )
             {
                 if (field == null)
                 {
@@ -33,7 +31,14 @@ namespace NMGen
 
                 mOpenHeightfield = field;
 
-                Reset(); 
+                if( isInitReverseIter )
+                {
+                    ReverseReset();
+                }
+                else
+                {
+                    Reset();
+                }
             }
 
             object IEnumerator.Current
@@ -55,13 +60,13 @@ namespace NMGen
 
             public int depthIndex()
             {
-                return mLastDepth;
+                return mNextDepth;
             }
 
 
             public int widthIndex()
             {
-                return mLastWidth; 
+                return mNextWidth; 
             }
 
 
@@ -73,46 +78,83 @@ namespace NMGen
                     return false ; 
                 }
 
-
-                if( mNext != null  )
+                //公有逻辑
+                if (mNext != null)
                 {
-                    if( mNext.next() != null  )
+                    if (mNext.next() != null)
                     {
                         mNext = mNext.next();
-                        return true ; 
+                        return true;
                     }
                     else
                     {
-                        mNextWidth++;
-                    }
-                }
-
-                for( int depthIndex = mNextDepth;
-                    depthIndex < mOpenHeightfield.depth();
-                    ++depthIndex)
-                {
-                    for(int widthIndex = mNextWidth; 
-                        widthIndex < mOpenHeightfield.width(); 
-                        widthIndex++)
-                    {
-                        OpenHeightSpan span = mOpenHeightfield.getData(widthIndex, depthIndex);
-                        if( span != null )
+                        if( mIsReverseIter )
                         {
-                            mNext = span;
-                            mNextWidth = widthIndex;
-                            mNextDepth = depthIndex;
-                            return true ; 
+                            mNextWidth--;
                         }
+                        else
+                        {
+                            mNextWidth++; 
+                        }
+                       
                     }
-                    mNextWidth = 0; 
                 }
 
-                mNext = null;
-                mNextDepth = -1;
-                mNextWidth = -1;
+                if ( mIsReverseIter )
+                {
+                    #region 反向遍历 
+                    for (int depthIndex = mNextDepth ; depthIndex >= 0 ; --depthIndex)
+                    {
+                        for (int widthIndex = mNextWidth ; widthIndex >= 0 ; --widthIndex )
+                        {
+                            OpenHeightSpan span = mOpenHeightfield.getData(widthIndex, depthIndex);
+                            if (span != null)
+                            {
+                                mNext = span;
+                                mNextWidth = widthIndex;
+                                mNextDepth = depthIndex;
+                                return true;
+                            }
+                        }
+                        mNextWidth = 0;
+                    }
 
-                return false;
-            }
+                    mNext = null;
+                    mNextDepth = -1;
+                    mNextWidth = -1;
+
+                    return false;
+
+                    #endregion 
+                }
+                else
+                {
+                    #region 正向遍历 
+                    for (int depthIndex = mNextDepth;depthIndex < mOpenHeightfield.depth();++depthIndex)
+                    {
+                        for (int widthIndex = mNextWidth;widthIndex < mOpenHeightfield.width();widthIndex++)
+                        {
+                            OpenHeightSpan span = mOpenHeightfield.getData(widthIndex, depthIndex);
+                            if (span != null)
+                            {
+                                mNext = span;
+                                mNextWidth = widthIndex;
+                                mNextDepth = depthIndex;
+                                return true;
+                            }
+                        }
+                        mNextWidth = 0;
+                    }
+
+                    mNext = null;
+                    mNextDepth = -1;
+                    mNextWidth = -1;
+
+                    return false;
+
+                    #endregion 
+                } // if-else
+            } // MoveNext
 
           
             public void Reset()
@@ -120,8 +162,19 @@ namespace NMGen
                 mNextWidth = 0;
                 mNextDepth = 0;
                 mNext = null;
-                mLastWidth = 0;
-                mLastDepth = 0;   
+                mIsReverseIter = false; 
+            }
+
+            public void ReverseReset()
+            {
+                if(mOpenHeightfield!= null)
+                {
+                    mNextWidth = mOpenHeightfield.width() ;
+                    mNextDepth = mOpenHeightfield.depth() ;
+                }
+
+                mNext = null;
+                mIsReverseIter = true;
             }
 
         }
@@ -136,7 +189,12 @@ namespace NMGen
 
         public OpenHeightFieldIterator GetEnumerator()
         {
-            return new OpenHeightFieldIterator(this);
+            return new OpenHeightFieldIterator(this,false);
+        }
+
+        public OpenHeightFieldIterator GetReverseEnumerator()
+        {
+            return new OpenHeightFieldIterator(this, true); 
         }
 
         private static readonly int UNKNOWN = -1;

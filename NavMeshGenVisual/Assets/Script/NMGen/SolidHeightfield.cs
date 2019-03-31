@@ -210,23 +210,21 @@ namespace NMGen
             return GetEnumerator();
         }
 
-        public SolidHeightFieldIterator GetEnumerator()
+        public SolidHeightfieldIterator GetEnumerator()
         {
-            return new SolidHeightFieldIterator(this); 
+            return new SolidHeightfieldIterator(this); 
         }
 
         #region iterator define
 
-        public class SolidHeightFieldIterator : IEnumerator
+        public class SolidHeightfieldIterator : IEnumerator ,IHeightFieldIterInterface
         {
             private int mNextWidth = 0;
             private int mNextDepth = 0;
             private HeightSpan mNext = null;
-
-            private int mLastWidth = 0;
-            private int mLastDepth = 0;
-
             private SolidHeightfield mSoldHeightfield = null;
+
+            private bool mIsReverseIter = false;
 
             object IEnumerator.Current
             {
@@ -245,7 +243,7 @@ namespace NMGen
                 }
             }
 
-            public SolidHeightFieldIterator(SolidHeightfield field)
+            public SolidHeightfieldIterator(SolidHeightfield field)
             {
                 if (field == null)
                 {
@@ -260,12 +258,12 @@ namespace NMGen
 
             public int depthIndex()
             {
-                return mLastDepth;
+                return mNextDepth;
             }
 
             public int widthIndex()
             {
-                return mLastWidth;
+                return mNextWidth;
             }
 
 
@@ -274,9 +272,14 @@ namespace NMGen
                 mNextWidth = 0;
                 mNextDepth = 0;
                 mNext = null;
-                mLastWidth = 0;
-                mLastDepth = 0;
+                mIsReverseIter = false; 
             }
+
+            public void ReverseReset()
+            {
+                Logger.LogWarning("[SolidHeightfield][SolidHeightFieldIterator][ReverseReset]Not implement!"); 
+            }
+
 
             public bool MoveNext()
             {

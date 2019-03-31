@@ -9,6 +9,10 @@ namespace NMGen
     {
         private static readonly int NULL_REGION = OpenHeightSpan.NULL_REGION;
 
+        private static readonly int BORDER = 0;
+
+        private static readonly int NEEDS_INIT = int.MaxValue;
+
         private int mMinTraversableHeight;
         private int mMaxTraversableStep;
         private int mSmoothingThreshold;
@@ -125,9 +129,7 @@ namespace NMGen
                 return;
             }
 
-            int BORDER = 0;
-
-            int NEEDS_INIT = int.MaxValue;
+          
 
             /*
              * 先将OpenHeightField的Span数据转换成0和1的二值图。如果是边缘Span
@@ -147,7 +149,7 @@ namespace NMGen
                     if( null == nSpan
                         || nSpan.getNeighbor(dir == 3 ? 0 : dir + 1) == null) 
                     {
-                        //如果8个邻居之路有任何一个缺失的话，那么就是边界Border
+                        //如果8个邻居有任何一个缺失的话，那么就是边界Border
                         isBorder = true;
                         break;
                     }
@@ -174,6 +176,8 @@ namespace NMGen
              *    (-1,-1) (0,-1) (1,-1)
              */
 
+            //Pass 1
+            //顺序访问 (-1,0) (-1,-1) (0,-1) (1,-1)
             iter.Reset(); 
             while( iter.MoveNext() )
             {
@@ -187,52 +191,91 @@ namespace NMGen
 
                 //(-1,0)
                 OpenHeightSpan nSpan = span.getNeighbor(0);
-                int nDist = nSpan.distanceToBorder(); 
-                
-                //邻居不是边界Border，但是它也不知道自己离边界Border有多远
-                if( nDist == NEEDS_INIT )
-                {
-                    //TODO 跑起来的时候需要改一下这个
-                    /*
-                     * 为什么不是dist=2呢？因为我觉得nSpan既然不是Border，
-                     * 那么它的8个领域必须都存在，那么它离Border的距离
-                     * 最起码应该是 >= 2的，因为中间间隔了一个它的领域单位。
-                     * Github上源码可是没这一段的哦??????
-                     */
-                    selfDist = 1; 
-                }
-                else
-                {
-                    /*
-                     * 这里有两种情况 ，一个是领域不是Border并且已经知道它离
-                     * Border的距离。一个情况就是他本身就是Border。
-                     * 如果领域已经知道它离Border的距离，那为什么不是加1就好呢?
-                     * 卧槽 ，我没搞懂。。。
-                     */
-                    selfDist = nDist + 2; 
-                }
-
+                selfDist = calcMiniDistanceToBorder(selfDist, nSpan, true);
 
                 //(-1,-1),左下角的领域
                 nSpan = nSpan.getNeighbor(3); //领域0的领域3，也就是原Span的左下角
-                if( nSpan != null )  //这一行多余的吧，既然已经确定Span不是Border，那么这个nSpan必然存在 
+                selfDist = calcMiniDistanceToBorder(selfDist, nSpan, false);
+
+                //(0,-1)
+                nSpan = span.getNeighbor(3);
+                selfDist = calcMiniDistanceToBorder(selfDist, nSpan, true);
+
+                //(1,-1) 
+                nSpan = nSpan.getNeighbor(2);
+                selfDist = calcMiniDistanceToBorder(selfDist, nSpan, true);
+                
+                span.setDistanceToBorder(selfDist); 
+
+            } // while
+
+
+            //Pass 2
+            //顺序访问 (1,0) (1,1) (0,1) (-1,1)
+            //注意这个是反向遍历
+            iter.ReverseReset(); 
+            while( iter.MoveNext() )
+            {
+                OpenHeightSpan span = iter.Current;
+                int selfDist = span.distanceToBorder();
+                if( selfDist == BORDER )
                 {
-                    nDist = nSpan.distanceToBorder(); 
-                    if( nDist == NEEDS_INIT )
-                    {
-                        nDist = 2; 
-                    }
-                    else
-                    {
-                        nDist += 3; 
-                    }
+                    continue; 
+                }
+
+                /* 
+                 * 因为经过Pass1之后 ，所有的Span要么就是Border
+                 * 要么就是有个大概值的，不会等于NEED_INIT的。
+                 * 所以直接按照按照上面的流程跑
+                 */
+
+                //(1,0)
+                OpenHeightSpan nSpan = span.getNeighbor(2);
+                selfDist = calcMiniDistanceToBorder(selfDist, nSpan, true);
+
+                //(1,1)
+                nSpan = nSpan.getNeighbor(1);
+                selfDist = calcMiniDistanceToBorder(selfDist, nSpan, false);
+
+                //(0,1)
+                nSpan = span.getNeighbor(1);
+                selfDist = calcMiniDistanceToBorder(selfDist, nSpan, true);
+
+                //(-1,1)
+                nSpan = nSpan.getNeighbor(0);
+                selfDist = calcMiniDistanceToBorder(selfDist, nSpan, false);
+
+            }
+        }
+
+        /// <summary>
+        /// 必须nSpan是存在的，如果不存在的话，span2Border的值自然就0了
+        /// </summary>
+        /// <param name="span2Border"></param>
+        /// <param name="nSpan"></param>
+        /// <param name="isAxisNeighbor"></param>
+        /// <returns></returns>
+        private int calcMiniDistanceToBorder( int span2Border, OpenHeightSpan nSpan , bool isAxisNeighbor)
+        {
+            if( nSpan != null  )
+            {
+                int nDist = nSpan.distanceToBorder(); 
+                if( nDist == NEEDS_INIT )
+                {
+                    nDist = isAxisNeighbor ? 1 : 2; 
                 }
                 else
                 {
-                    Logger.LogWarning("[OpenHeightfieldBuilder][generateDistanceField](-1,-1) not exist ?"); 
+                    nDist = isAxisNeighbor ? nDist + 2 : nDist + 3; 
                 }
+                span2Border = Math.Min(span2Border, nDist); 
+            }
+            else
+            {
+                Logger.LogWarning("[OpenHeightfieldBuilder][calcMiniDistanceToBorder]nSpan null"); 
             }
 
+            return span2Border; 
         }
 
         public void generateNeighborLinks(OpenHeightfield field)

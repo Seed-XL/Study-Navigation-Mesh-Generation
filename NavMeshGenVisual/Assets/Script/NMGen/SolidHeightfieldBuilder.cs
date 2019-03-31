@@ -135,7 +135,7 @@ namespace NMGen
         /// <param name="field"></param>
         private void markLedgeSpans(SolidHeightfield field)
         {
-            SolidHeightfield.SolidHeightFieldIterator iter = field.GetEnumerator(); 
+            SolidHeightfield.SolidHeightfieldIterator iter = field.GetEnumerator(); 
             while( iter.MoveNext() )
             {
                 HeightSpan span = iter.Current; 
@@ -217,7 +217,7 @@ namespace NMGen
         /// <param name="field"></param>
         private void markLowHeightSpans(SolidHeightfield field)
         {
-            SolidHeightfield.SolidHeightFieldIterator iter = field.GetEnumerator(); 
+            SolidHeightfield.SolidHeightfieldIterator iter = field.GetEnumerator(); 
             while( iter.MoveNext() )
             {
                 HeightSpan span = iter.Current; 
