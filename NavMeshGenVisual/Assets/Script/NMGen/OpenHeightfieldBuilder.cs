@@ -115,6 +115,156 @@ namespace NMGen
             return result; 
         }
 
+        /// <summary>
+        /// TODO 解决了那两个地方为啥是加2
+        /// </summary>
+        /// <param name="inoutSpans"></param>
+        /// <param name="maxIterations"></param>
+        private void expandRegions(List<OpenHeightSpan> inoutSpans ,int maxIterations)
+        {
+            if( inoutSpans.Count == 0 )
+            {
+                return; 
+            }
+
+            int iterCount = 0; 
+            while(true)
+            {
+                int skipped = 0; 
+
+                for(int iSpan = 0; iSpan < inoutSpans.Count; ++iSpan)
+                {
+                    OpenHeightSpan span = inoutSpans[iSpan]; 
+                    if( null == span )
+                    {
+                        skipped++;
+                        continue; 
+                    }
+
+                    int spanRegion = NULL_REGION;
+                    int regionCenterDist = int.MaxValue; 
+
+                    //看看邻居的RegionID情况
+                    for(int dir = 0; dir < 4; ++dir)
+                    {
+                        OpenHeightSpan nSpan = span.getNeighbor(dir); 
+                        if( null == nSpan )
+                        {
+                            continue; 
+                        }
+
+                        if( nSpan.regionID() > NULL_REGION  )
+                        {
+                            //TODO 为啥是+2
+                            if( nSpan.distanceToRegionCore() + 2 < regionCenterDist  )
+                            {
+                                int sameRegionCount = 0; 
+                                if( mUseConservativeExpansion )
+                                {
+                                    for( int ndir = 0; ndir < 4; ++ndir )
+                                    {
+                                        OpenHeightSpan nnSpan = nSpan.getNeighbor(ndir); 
+                                        if( null == nnSpan )
+                                        {
+                                            continue; 
+                                        }
+
+                                        if( nnSpan.regionID() == nSpan.regionID() )
+                                        {
+                                            sameRegionCount++; 
+                                        }
+                                    }     
+                                }
+
+                                //如果轴对齐邻居所有的Region多于1个体素就可以了
+                                if( !mUseConservativeExpansion
+                                    || sameRegionCount > 1)
+                                {
+                                    //TODO 为啥要加2
+                                    spanRegion = nSpan.regionID();
+                                    regionCenterDist = nSpan.distanceToRegionCore() + 2; 
+                                }
+                            }
+                        }
+                    } // for 
+
+                    if( spanRegion != NULL_REGION )
+                    {
+                        inoutSpans[iSpan] = null;
+                        span.setRegionID(spanRegion); 
+                    }
+                    else
+                    {
+                        skipped++; 
+                    }
+                } // for 
+
+                if( skipped == inoutSpans.Count )
+                {
+                    break; 
+                }
+
+                if( maxIterations != -1)
+                {
+                    iterCount++; 
+                    if( iterCount > maxIterations )
+                    {
+                        break; 
+                    }
+                }
+            }
+        }
+
+        public void generateRegions( OpenHeightfield field )
+        {
+            if (null == field)
+            {
+                return;
+            }
+
+            int minDist = mTraversableAreaBorderSize + field.minBorderDistance();
+            int expandIterations = 4 + (mTraversableAreaBorderSize * 2); //TODO emmm
+
+            //排除奇数
+            int dist = (field.maxBorderDistance() - 1) & ~1 ;
+
+            List<OpenHeightSpan> floodedSpans = new List<OpenHeightSpan>(1024);
+            Stack<OpenHeightSpan> workingStack = new Stack<OpenHeightSpan>(1024);
+
+            OpenHeightfield.OpenHeightFieldIterator iter = field.GetEnumerator();
+
+            int nextRegionID = 1; 
+            while( dist > minDist )
+            {
+                iter.Reset();
+                floodedSpans.Clear(); 
+
+                while( iter.MoveNext() )
+                {
+                    OpenHeightSpan span = iter.Current; 
+                    if( span.regionID() == NULL_REGION
+                        && span.distanceToBorder() >= dist )
+                    {
+                        floodedSpans.Add(span); 
+                    }
+                }
+
+                if( nextRegionID > 1 )
+                {
+                    //大于1表示已经至少存在1个region，先去尝试一下合并
+                    if( dist > 0 )
+                    {
+                        expandRegions(floodedSpans, expandIterations);     
+                    }
+                    else
+                    {
+                        expandRegions(floodedSpans, -1); 
+                    }
+                }
+            }
+        }
+
+
         public void blurDistanceField(OpenHeightfield field)
         {
             if( null == field )
@@ -135,7 +285,7 @@ namespace NMGen
             {
                 OpenHeightSpan span = iter.Current;
                 int origDist = span.distanceToBorder(); 
-                if( origDist <= mSmoothingThreshold )
+                if( origDist <= mSmoothingThreshold )  //这里也会Border引进去
                 {
                     blurResults.Add(span, mSmoothingThreshold);
                     continue; 
@@ -148,13 +298,13 @@ namespace NMGen
                     OpenHeightSpan nSpan = span.getNeighbor(dir); 
                     if( null == nSpan )
                     {
-                        //
+                        //这是不知道能不能看作自己占的比较增加了？但是为啥是 * 2 呢？
                         workingDist += origDist * 2; 
                     }
                     else
                     {
                         workingDist += nSpan.distanceToBorder();
-                        nSpan = nSpan.getNeighbor( (dir+1) & 0x3 ); 
+                        nSpan = nSpan.getNeighbor( (dir+1) & 0x3 );   //对角线的
                         if( null == nSpan )
                         {
                             workingDist += origDist; 
@@ -164,9 +314,21 @@ namespace NMGen
                             workingDist += nSpan.distanceToBorder();  
                         }
                     }
-                }
-            }
+                }  //for 
 
+                if( blurResults.ContainsKey(span) )
+                {
+                    //除以9是平均呢，但是加上五就真的是不知道为什么了
+                    blurResults[span] = (workingDist + 5) / 9; 
+                }
+
+            }  //while
+
+            //更新一下距离值 
+            foreach( var blurIter in blurResults )
+            {
+                blurIter.Key.setDistanceToBorder(blurIter.Value);   
+            }
         }
 
         /* 参考 ：http://www.cnblogs.com/wantnon/p/4947067.html 

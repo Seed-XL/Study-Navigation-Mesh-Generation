@@ -280,6 +280,16 @@ namespace NMGen
             return mMaxBorderDistance; 
         }
 
+        public int minBorderDistance()
+        {
+            if( mMinBorderDistance == UNKNOWN )
+            {
+                calcBorderDistanceBounds(); 
+            }
+            return mMinBorderDistance; 
+        }
+
+
         public void printDistanceField()
         {
             Logger.Log("[OpenHeightfield][printDistanceField]Log Start");
@@ -344,5 +354,7 @@ namespace NMGen
                 mMinBorderDistance = UNKNOWN;  
             }
         }
+
+        
     }
 }
