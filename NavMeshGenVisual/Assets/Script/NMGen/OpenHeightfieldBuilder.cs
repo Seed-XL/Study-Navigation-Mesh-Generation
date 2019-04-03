@@ -116,7 +116,7 @@ namespace NMGen
         }
 
         /// <summary>
-        /// TODO 解决了那两个地方为啥是加2
+        /// TODO 解决那两个地方为啥是加2
         /// </summary>
         /// <param name="inoutSpans"></param>
         /// <param name="maxIterations"></param>
@@ -176,7 +176,7 @@ namespace NMGen
                                     }     
                                 }
 
-                                //如果轴对齐邻居所有的Region多于1个体素就可以了
+                                //如果轴对齐邻居的邻居的Region相同，也就是多于1个体素就可以了
                                 if( !mUseConservativeExpansion
                                     || sameRegionCount > 1)
                                 {
@@ -222,6 +222,7 @@ namespace NMGen
                 return;
             }
 
+            //这个距离，控制生成的网络有多贴近实际的模型
             int minDist = mTraversableAreaBorderSize + field.minBorderDistance();
             int expandIterations = 4 + (mTraversableAreaBorderSize * 2); //TODO emmm
 
@@ -234,7 +235,7 @@ namespace NMGen
             OpenHeightfield.OpenHeightFieldIterator iter = field.GetEnumerator();
 
             int nextRegionID = 1; 
-            while( dist > minDist )
+            while( dist > minDist )  //高于这个距离的体素都得生成Regions
             {
                 iter.Reset();
                 floodedSpans.Clear(); 
@@ -261,7 +262,133 @@ namespace NMGen
                         expandRegions(floodedSpans, -1); 
                     }
                 }
+
+                //剩下的可能要生成新的Region
+                foreach( OpenHeightSpan span in floodedSpans )
+                {
+                    if( null == span 
+                        || span.regionID() != NULL_REGION )
+                    {
+                        continue; 
+                    }
+
+                    //TODO ????
+                    int fillTo = Math.Max(dist - 2, minDist); 
+                    if( floodNewRegion(span,fillTo,nextRegionID,workingStack ))
+                    {
+                        nextRegionID++; 
+                    }
+                }
+
+                //更新深度
+                dist = Math.Max(dist - 2, 0); 
+            }  //while
+
+            //最后一篇循环
+            iter.Reset();
+            floodedSpans.Clear(); 
+            while( iter.MoveNext() )
+            {
+                OpenHeightSpan span = iter.Current; 
+                if( span.distanceToBorder() >= minDist
+                    && span.regionID() == NULL_REGION )
+                {
+                    floodedSpans.Add(span); 
+                }
             }
+
+            if( minDist > 0 )
+            {
+                expandRegions(floodedSpans, expandIterations * 8); 
+            }
+            else
+            {
+                expandRegions(floodedSpans, -1); 
+            }
+            field.setRegionCount(nextRegionID);
+
+            foreach( IOpenHeightFieldAlgorithm algorithm in mRegionAlgorithms )
+            {
+                algorithm.apply(field);  
+            }
+        }
+
+        private static bool floodNewRegion( OpenHeightSpan rootSpan,
+            int fillToDist ,
+            int regionID,
+            Stack<OpenHeightSpan> workingStack )
+        {
+            workingStack.Clear();
+
+            List<OpenHeightSpan> workingList = new List<OpenHeightSpan>();
+
+            workingStack.Push(rootSpan);
+            workingList.Add(rootSpan);
+            rootSpan.setRegionID(regionID);
+            rootSpan.setDistanceToRegionCore(0);
+
+            int regionSize = 0; 
+
+            //广度优先搜索
+            while( workingStack.Count > 0 )
+            {
+                OpenHeightSpan span = workingStack.Pop();
+
+                bool isOnRegionBorder = false; 
+                for( int dir = 0; dir < 4; ++dir )
+                {
+                    OpenHeightSpan nSpan = span.getNeighbor(dir); 
+                    if( null == nSpan )
+                    {
+                        continue; 
+                    }
+
+                    if( nSpan.regionID() != NULL_REGION
+                        && nSpan.regionID() != regionID )
+                    {
+                        isOnRegionBorder = true;
+                        break;
+                    }
+
+                    //对角线邻居
+                    nSpan = nSpan.getNeighbor((dir + 1) & 0x3); 
+                    if( nSpan != null 
+                        && nSpan.regionID() != NULL_REGION 
+                        && nSpan.regionID() != regionID )
+                    {
+                        isOnRegionBorder = true;
+                        break; 
+                    }
+
+                }  //for 
+
+                if( isOnRegionBorder )
+                {
+                    span.setRegionID(NULL_REGION);
+                    continue; 
+                }
+
+                //到这里，表明要新增加一个Region了
+                regionSize++; 
+
+                for( int dir = 0;  dir < 4;++dir )
+                {
+                    OpenHeightSpan nSpan = span.getNeighbor(dir); 
+                    if( nSpan != null 
+                        && nSpan.distanceToBorder() >= fillToDist  //
+                        && nSpan.regionID() == NULL_REGION )
+                    {
+                        nSpan.setRegionID(regionID);
+                        nSpan.setDistanceToRegionCore(0);
+                        workingStack.Push(nSpan);
+                        workingList.Add(nSpan);   //这个是要被返回的
+                    }
+                }
+
+            } // while
+
+
+            return regionSize > 0; 
         }
 
 
