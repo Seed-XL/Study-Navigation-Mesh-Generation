@@ -156,6 +156,7 @@ namespace NMGen
                         if( nSpan.regionID() > NULL_REGION  )
                         {
                             //TODO 为啥是+2
+                            //初始的话，这个值都是0的。
                             if( nSpan.distanceToRegionCore() + 2 < regionCenterDist  )
                             {
                                 int sameRegionCount = 0; 
@@ -234,8 +235,9 @@ namespace NMGen
 
             OpenHeightfield.OpenHeightFieldIterator iter = field.GetEnumerator();
 
-            int nextRegionID = 1; 
-            while( dist > minDist )  //高于这个距离的体素都得生成Regions
+            int nextRegionID = 1;
+            //高于这个距离的体素都得生成Regions，那剩下的体素怎么办呢？
+            while ( dist > minDist )  
             {
                 iter.Reset();
                 floodedSpans.Clear(); 
@@ -257,7 +259,7 @@ namespace NMGen
                     {
                         expandRegions(floodedSpans, expandIterations);     
                     }
-                    else
+                    else  //这里不太可能会走到吧？除非minDist == 0
                     {
                         expandRegions(floodedSpans, -1); 
                     }
@@ -282,7 +284,7 @@ namespace NMGen
 
                 //更新深度
                 dist = Math.Max(dist - 2, 0); 
-            }  //while
+            }  //while dist > minDist
 
             //最后一篇循环
             iter.Reset();
@@ -307,6 +309,7 @@ namespace NMGen
             }
             field.setRegionCount(nextRegionID);
 
+            //后处理
             foreach( IOpenHeightFieldAlgorithm algorithm in mRegionAlgorithms )
             {
                 algorithm.apply(field);  
@@ -320,10 +323,7 @@ namespace NMGen
         {
             workingStack.Clear();
 
-            List<OpenHeightSpan> workingList = new List<OpenHeightSpan>();
-
             workingStack.Push(rootSpan);
-            workingList.Add(rootSpan);
             rootSpan.setRegionID(regionID);
             rootSpan.setDistanceToRegionCore(0);
 
@@ -334,6 +334,7 @@ namespace NMGen
             {
                 OpenHeightSpan span = workingStack.Pop();
 
+                //表示当前Region是否已经在所属Region附近
                 bool isOnRegionBorder = false; 
                 for( int dir = 0; dir < 4; ++dir )
                 {
@@ -362,6 +363,7 @@ namespace NMGen
 
                 }  //for 
 
+                //那么，它就不能成为新的Region
                 if( isOnRegionBorder )
                 {
                     span.setRegionID(NULL_REGION);
@@ -379,9 +381,8 @@ namespace NMGen
                         && nSpan.regionID() == NULL_REGION )
                     {
                         nSpan.setRegionID(regionID);
-                        nSpan.setDistanceToRegionCore(0);
+                        nSpan.setDistanceToRegionCore(0);  //如果是同一区域的话 ？离中心是0的？
                         workingStack.Push(nSpan);
-                        workingList.Add(nSpan);   //这个是要被返回的
                     }
                 }
 
