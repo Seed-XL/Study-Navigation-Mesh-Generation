@@ -224,7 +224,6 @@ namespace NMGen
             private HeightSpan mNext = null;
             private SolidHeightfield mSoldHeightfield = null;
 
-            private bool mIsReverseIter = false;
 
             object IEnumerator.Current
             {
@@ -272,7 +271,6 @@ namespace NMGen
                 mNextWidth = 0;
                 mNextDepth = 0;
                 mNext = null;
-                mIsReverseIter = false; 
             }
 
             public void ReverseReset()
