@@ -121,14 +121,31 @@ namespace NMGen
                     iter.widthIndex(),
                     iter.depthIndex(),
                     startDir,
-                    out workingRawVerts
-                    ); 
+                    ref workingRawVerts
+                    );
+
+                generateSimplifiedContour(span.regionID(),
+                    workingRawVerts,
+                    ref workingSimplifiedVerts); 
 
             } // while iter 
 
 
             return null; 
         } // build 
+
+        private void generateSimplifiedContour(int regionID,
+            List<int> sourceVerts ,
+            ref List<int> outVerts )
+        {
+            bool noConnections = true;
+
+            for (int pVert = 0; pVert < sourceVerts.Count; pVert += 4 )
+            {
+               //TODO
+            }
+        }
+
 
         private static bool isSameRegion(OpenHeightSpan span , int dir)
         {
@@ -145,7 +162,7 @@ namespace NMGen
             int startWidthIndex,
             int startDepthIndex,
             int startDirection ,
-            out List<int> outContourVerts 
+            ref List<int> outContourVerts 
             )
         {
             OpenHeightSpan span = startSpan;
@@ -158,12 +175,13 @@ namespace NMGen
             {
                 if( !isSameRegion(span,dir) )
                 {
+                    //span
                     int px = spanX;
                     int py = getCornerHeight(span,dir);
                     int pz = spanZ;
 
-                    /* TODO 意义不明？？？？？
-                     * 我靠，这里取的是点，所以需要做这些偏移来记录点，而不是记录对应的Span
+                    /* 
+                     * 这里取的是点，所以需要做这些偏移来记录点，而不是记录对应的Span
                      * 这里需要结合 ：  方向 + 某个点 ，来理解 为什么要加这个偏移
                      * 
                      *
@@ -174,8 +192,9 @@ namespace NMGen
                      *    dir = 0 的时候，需要取左上角的点
                      *    dir = 1 的时候，需要取右上角的点   
                      *    dir = 2 的时候，需要取右下角的点
+                     *    dir = 3 的时候，取的就是参考点
                      *    
-                     *    就是 dir方向对应的顺时针的点
+                     *    以左下角的点为参考点，就是 dir方向对应的顺时针的点
                      * 
                      */
 
@@ -194,7 +213,44 @@ namespace NMGen
                         case 2: px++; break; 
                     }
 
+                    int regionThisDirection = NULL_REGION;
+                    OpenHeightSpan nSpan = span.getNeighbor(dir); 
+                    if( nSpan != null )
+                    {
+                        regionThisDirection = nSpan.regionID(); 
+                    }
+
+                    //这是轮廓的点
+                    outContourVerts.Add(px);
+                    outContourVerts.Add(py);
+                    outContourVerts.Add(pz);
+                    outContourVerts.Add(regionThisDirection);
+
+                    span.flags &= ~(1 << dir);  //清除dir对应的位
+                    dir = NMGenUtility.ClockwiseRotateDir(dir);  
+
                 } //isSameRegion
+                else
+                {
+                    //这段就是步进到下一个同Region的Span，很好理解。
+                    span = span.getNeighbor(dir); 
+                    switch(dir)
+                    {
+                        case 0: spanX--;break;
+                        case 1: spanZ++;break;
+                        case 2: spanX++;break;
+                        case 3: spanZ--;break;
+                    }
+                    dir = NMGenUtility.CClockwiseRotateDir(dir);  
+
+                } // no the SameRegion
+
+                if( span == startSpan 
+                    && dir == startDirection )
+                {
+                    break;  
+                }
+
             }  //while
         } //buildRawContour
 
@@ -216,7 +272,7 @@ namespace NMGen
             int maxFloor = span.floor();  
             OpenHeightSpan dSpan = null;
             //顺时针
-            int directionOffset = (direction + 1) & 0x3;
+            int directionOffset =  NMGenUtility.ClockwiseRotateDir(direction) ;
             OpenHeightSpan nSpan = span.getNeighbor(direction);
             if( nSpan != null )
             {
@@ -240,6 +296,6 @@ namespace NMGen
             }
 
             return maxFloor;  
-        }
+        } 
     }
 }

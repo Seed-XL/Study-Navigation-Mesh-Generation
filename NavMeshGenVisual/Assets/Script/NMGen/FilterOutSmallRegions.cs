@@ -441,13 +441,15 @@ namespace NMGen
                         lastEdgeRegionID = currEdgeRegionID;
                     }
 
-                    dir = (dir + 1) & 0x3;  //顺时针转向下一个
+                     //顺时针转向下一个
+                    dir = NMGenUtility.ClockwiseRotateDir(dir); 
                 }
                 else
                 {
                     //这个分支代表 Region是相同的
                     span = nSpan;
-                    dir = (dir + 3) & 0x3;  //逆时针转一下
+                    //逆时针转一下
+                    dir = NMGenUtility.CClockwiseRotateDir(dir); 
                 }
 
                 if( startSpan == span 

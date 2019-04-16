@@ -56,7 +56,7 @@ namespace NMGen
                     //而行走方向为 null Region所在的方向 
                     workingSpan = span.getNeighbor(edgeDirection);
                     //转180度
-                    edgeDirection = (edgeDirection + 2) & 0x3;
+                    edgeDirection = NMGenUtility.AntiDir(edgeDirection) ;
                 }
                 else if ( !mUseOnlyNullSpans ) 
                 {
@@ -106,7 +106,7 @@ namespace NMGen
             int borderDirection ,
             int newRegionID )
         {
-            int antiBorderDirection = (borderDirection + 2) & 0x3;
+            int antiBorderDirection = NMGenUtility.AntiDir(borderDirection);
             int regionID = startSpan.regionID();
 
             startSpan.setRegionID(newRegionID);
@@ -259,14 +259,14 @@ namespace NMGen
                         }
                     }
 
-                    dir = (dir + 1) & 0x3; 
+                    dir = NMGenUtility.ClockwiseRotateDir(dir); 
                     borderSeenLastLoop = true;
                     stepsWithoutBorder = 0;
                 }
                 else   //注意，不是边界，才会进行移动，如果是边界的话，只会进行转向
                 {
                     span = nSpan;
-                    dir = (dir + 3) & 0x3;  //逆时针转向一下
+                    dir = NMGenUtility.CClockwiseRotateDir(dir);  //逆时针转向一下
                     borderSeenLastLoop = false;
                     stepsWithoutBorder++; 
                 } // else
@@ -535,8 +535,8 @@ namespace NMGen
              *     u a a
              */
 
-            int antiBorderDirection = (borderDirection + 2) & 0x3;
-            int antiCornerDirection = (cornerDirection + 2) & 0x3; 
+            int antiBorderDirection = NMGenUtility.AntiDir(borderDirection) ;
+            int antiCornerDirection = NMGenUtility.AntiDir(cornerDirection) ; 
             int regionID = mwNeighborRegions[antiBorderDirection];
             if( regionID == referenceSpan.regionID()
                 || NULL_REGION == regionID )
