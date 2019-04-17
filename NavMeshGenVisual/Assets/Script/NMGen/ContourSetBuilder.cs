@@ -39,24 +39,23 @@ namespace NMGen
 
             int discardedContours = 0;
 
-            //TODO
             /*
-            *  If a span has no connections to external regions or is
-            *  completely surrounded by other regions (a single span island),
-            *  its flag will be zero.
-            * 
-            *  If a span is connected to one or more external regions then the
-            *  flag will be a 4 bit value where connections are recorded as
-            *  follows:
-            *      bit1 = neighbor0
-            *      bit2 = neighbor1
-            *      bit3 = neighbor2
-            *      bit4 = neighbor3
-            *  With the meaning of the bits as follows:
-            *      0 = neighbor in same region.
-            *      1 = neighbor not in same region. (Neighbor may be the null
-            *      region or a real region.)
-            */
+             *  If a span has no connections to external regions or is
+             *  completely surrounded by other regions (a single span island),
+             *  its flag will be zero.
+             * 
+             *  If a span is connected to one or more external regions then the
+             *  flag will be a 4 bit value where connections are recorded as
+             *  follows:
+             *      bit1 = neighbor0
+             *      bit2 = neighbor1
+             *      bit3 = neighbor2
+             *      bit4 = neighbor3
+             *  With the meaning of the bits as follows:
+             *      0 = neighbor in same region.
+             *      1 = neighbor not in same region. (Neighbor may be the null
+             *      region or a real region.)
+             */
             OpenHeightfield.OpenHeightFieldIterator iter = sourceField.GetEnumerator(); 
             while( iter.MoveNext() )
             {
@@ -139,12 +138,120 @@ namespace NMGen
             ref List<int> outVerts )
         {
             bool noConnections = true;
-
             for (int pVert = 0; pVert < sourceVerts.Count; pVert += 4 )
             {
-               //TODO
+                //第四个字段就RegionID 对应的索引就是3
+                if( sourceVerts[pVert+3] != NULL_REGION )
+                {
+                    noConnections = false;
+                    break; 
+                }
+            } //for 
+
+            if( noConnections )
+            {
+                //一个四周都是NULL_Region的Region
+
+                // ll => lowr left
+                // ur => upper right
+                int llx = sourceVerts[0];
+                int lly = sourceVerts[1];
+                int llz = sourceVerts[2];
+                int lli = 0;
+
+                int urx = sourceVerts[0];
+                int ury = sourceVerts[1];
+                int urz = sourceVerts[2];
+                int uri = 0;
+
+                for (int pVert = 0; pVert < sourceVerts.Count; pVert += 4)
+                {
+                    int x = sourceVerts[pVert];
+                    int y = sourceVerts[pVert + 1];
+                    int z = sourceVerts[pVert + 2];
+
+                    if( x < llx 
+                        || ( x == llx && z < llz )) 
+                    {
+                        llx = x;
+                        lly = y;
+                        llz = z;
+                        lli = pVert / 4;  
+                    }
+                    
+                    if( x >= urx 
+                        || ( x == urx && z > urz))
+                    {
+                        urx = x;
+                        ury = y;
+                        urz = z;
+                        uri = pVert / 4; 
+                    }
+                } // for 
+
+                //最低点和最高点，连在一起
+                outVerts.Add(llx);
+                outVerts.Add(lly);
+                outVerts.Add(llz);
+                outVerts.Add(lli);
+
+                outVerts.Add(urx);
+                outVerts.Add(ury);
+                outVerts.Add(urz);
+                outVerts.Add(uri);
+
+            } // if noConnections
+            else
+            {
+                for( int iVert = 0 , vCount = sourceVerts.Count /4; 
+                    iVert < vCount;  
+                    ++iVert )
+                {
+                    //当前顶点与下一个顶点属于不同的Region，所以是一个变化点 ？
+                    if( !(sourceVerts[iVert*4+3] == sourceVerts[((iVert+1)%vCount)*4+3] ) )
+                    {
+                        outVerts.Add(sourceVerts[iVert * 4]);
+                        outVerts.Add(sourceVerts[iVert * 4 + 1]);
+                        outVerts.Add(sourceVerts[iVert * 4 + 2]);
+                        outVerts.Add(iVert);  
+                    }
+                }
+            }  // else noConnections
+
+
+            foreach(IContourAlgorithm algorithm in mAlgorithms)
+            {
+                algorithm.apply(sourceVerts, outVerts); 
             }
-        }
+
+            if( outVerts.Count < 12 )
+            {
+                int sourceVertCount = sourceVerts.Count / 4;
+                int iSelected = -1;
+                float maxDistance = 0;
+                int ax = outVerts[0];
+                int az = outVerts[2];
+                int bx = outVerts[4];
+                int bz = outVerts[6]; 
+
+                for(int iVert = 0; iVert < sourceVertCount; ++iVert )
+                {
+                    float dist = Geometry.getPointSegmentDistanceSq(
+                        sourceVerts[iVert * 4 + 0],
+                        sourceVerts[iVert * 4 + 2],
+                        ax, az,
+                        bx, bz
+                        );
+
+                    if( dist > maxDistance )
+                    {
+                        maxDistance = dist;
+                        iSelected = iVert; 
+                    }
+                }
+            }
+
+        }  // func end 
 
 
         private static bool isSameRegion(OpenHeightSpan span , int dir)
