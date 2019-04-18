@@ -83,7 +83,7 @@ namespace NMGen
 
                 //1111111
                 span.flags ^= 0xf; 
-                if( span.flags == 0xf )   //证明四个邻居都不在同一个Region？？？
+                if( span.flags == 0xf)   //证明四个邻居都不在同一个Region或者是一个孤岛Span
                 {
                     //重置这个位置
                     span.flags = 0;
@@ -109,10 +109,10 @@ namespace NMGen
                 workingRawVerts.Clear();
                 workingSimplifiedVerts.Clear();
 
+                //找到第一个不是同一个Region的Span
                 int startDir = 0; 
                 while( isSameRegion(span,startDir) )
                 {
-                    //不等于0，证明是另外一个Region
                     startDir++; 
                 }
 
@@ -207,7 +207,7 @@ namespace NMGen
                     iVert < vCount;  
                     ++iVert )
                 {
-                    //当前顶点与下一个顶点属于不同的Region，所以是一个变化点 ？
+                    //当前顶点与下一个顶点属于不同的Region，所以是一个突变点？
                     if( !(sourceVerts[iVert*4+3] == sourceVerts[((iVert+1)%vCount)*4+3] ) )
                     {
                         outVerts.Add(sourceVerts[iVert * 4]);
@@ -219,6 +219,7 @@ namespace NMGen
             }  // else noConnections
 
 
+            
             foreach(IContourAlgorithm algorithm in mAlgorithms)
             {
                 algorithm.apply(sourceVerts, outVerts); 
@@ -280,6 +281,7 @@ namespace NMGen
 
             while( ++loopCount < ushort.MaxValue  )
             {
+                //这是一个突变点
                 if( !isSameRegion(span,dir) )
                 {
                     //span
