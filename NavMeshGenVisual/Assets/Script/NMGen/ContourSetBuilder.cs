@@ -219,15 +219,16 @@ namespace NMGen
             }  // else noConnections
 
 
-            
+            //1、多边形逼近的算法
+            //2、找到连接Null-Region的超长边
             foreach(IContourAlgorithm algorithm in mAlgorithms)
             {
                 algorithm.apply(sourceVerts, outVerts); 
             }
 
-            if( outVerts.Count < 12 )
+            int sourceVertCount = sourceVerts.Count / 4;
+            if ( outVerts.Count < 12 )  //Simple Contour 小于三个点
             {
-                int sourceVertCount = sourceVerts.Count / 4;
                 int iSelected = -1;
                 float maxDistance = 0;
                 int ax = outVerts[0];
@@ -235,8 +236,11 @@ namespace NMGen
                 int bx = outVerts[4];
                 int bz = outVerts[6]; 
 
+                //最长去到 8
+
                 for(int iVert = 0; iVert < sourceVertCount; ++iVert )
                 {
+                    //找到原来顶点中，离这两点组成的线段最远的点
                     float dist = Geometry.getPointSegmentDistanceSq(
                         sourceVerts[iVert * 4 + 0],
                         sourceVerts[iVert * 4 + 2],
@@ -249,10 +253,109 @@ namespace NMGen
                         maxDistance = dist;
                         iSelected = iVert; 
                     }
+                } // for
+
+                //如果这个选中的顶点 Simple Vert 中 顶点A 在 Source Verts 中的索引还要早
+                if( iSelected < outVerts[3] )
+                {
+                    //bx 向后挪一位
+                    outVerts.Add(bx);
+                    outVerts.Add(outVerts[5]);
+                    outVerts.Add(bz);
+                    outVerts.Add(outVerts[7]);
+
+                    //ax 向后挪一位
+                    outVerts[4] = ax;
+                    outVerts[5] = outVerts[1];
+                    outVerts[6] = az;
+                    outVerts[7] = outVerts[3];
+
+                    //直接插到最前
+                    int iSelectedBase = iSelected * 4;
+                    outVerts[0] = sourceVerts[iSelectedBase];
+                    outVerts[1] = sourceVerts[iSelectedBase + 1];
+                    outVerts[2] = sourceVerts[iSelectedBase + 2];
+                    outVerts[3] = sourceVerts[iSelected];
                 }
+                else if( iSelected < outVerts[7])  //在B之前 
+                {
+                    //bx 向后挪一位
+                    outVerts.Add(bx);
+                    outVerts.Add(outVerts[5]);
+                    outVerts.Add(bz);
+                    outVerts.Add(outVerts[7]);
+
+                    //插到B原来的位置
+                    int iSelectedBase = iSelected * 4;
+                    outVerts[4] = sourceVerts[iSelectedBase];
+                    outVerts[5] = sourceVerts[iSelectedBase + 1];
+                    outVerts[6] = sourceVerts[iSelectedBase + 2];
+                    outVerts[7] = sourceVerts[iSelected];
+                }
+                else  //直接插到最后面
+                {
+                    int iSelectedBase = iSelected * 4;
+                    outVerts.Add(iSelectedBase);
+                    outVerts.Add(iSelectedBase + 1 );
+                    outVerts.Add(iSelectedBase + 2);
+                    outVerts.Add(iSelected);
+                }
+            }  // outVerts.Count < 12 
+
+            sourceVertCount = sourceVerts.Count / 4;
+            int simplifiedVertCount = outVerts.Count / 4; 
+
+            //TODO 为什么用的是下一个顶点的Region ？
+            for(int iVert = 0; iVert < simplifiedVertCount; ++iVert )
+            {
+                //TODO  RegionID从源顶点对应的顶点的下一个中取出来？为啥不取自己的？
+                //  这里不是明显有问题么？因为有可能是不同的Region
+                int iVertSourceIdx = iVert * 4 + 3;
+                //这个我先注释掉
+                //int sourceVertIndex = ( outVerts[iVertSourceIdx] + 1 ) % sourceVertCount ;
+                int sourceVertIndex = (outVerts[iVertSourceIdx]) % sourceVertCount;
+                outVerts[iVertSourceIdx] = sourceVerts[sourceVertIndex * 4 + 3];  //将输出Idx连接的Region设置为下一个顶点的Region
             }
 
+            removeVerticalSegments(regionID, outVerts);
+            removeIntersectingSegments(regionID, outVerts); 
         }  // func end 
+
+        private static void removeIntersectingSegments(int regionID,List<int> verts)
+        {
+            int startSize = verts.Count;
+            int vCount = startSize / 4; 
+            for(int iVert = 0; iVert < vCount; ++iVert)
+            {
+                int iVertNext = (iVert + 1) % vCount; 
+                if( NULL_REGION != verts[iVertNext*4+3] )
+                {
+                    iVert += removeIntersectingSegments()
+                }
+            }
+        }
+
+        private static void removeVerticalSegments(int regionID ,List<int> verts)
+        {
+            for( int pVert = 0; pVert < verts.Count; )
+            {
+                int pNextVert = (pVert + 4) % verts.Count; 
+                if( verts[pVert] == verts[pNextVert]   //x坐标
+                    && verts[pVert+2] == verts[pNextVert+2] )  //z坐标
+                {
+                    verts.Remove(pNextVert);
+                    verts.Remove(pNextVert); //+1
+                    verts.Remove(pNextVert); //+2
+                    verts.Remove(pNextVert); //+3
+
+                    Logger.LogWarning("[ContourSetBuilder][removeVerticalSegments]Contour Detail lost|{0}", regionID); 
+                }
+                else
+                {
+                    pVert += 4; 
+                }
+            }
+        }
 
 
         private static bool isSameRegion(OpenHeightSpan span , int dir)

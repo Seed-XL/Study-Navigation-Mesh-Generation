@@ -26,6 +26,8 @@ namespace NMGen
                 return deltaAPx * deltaAPx + deltaAPy * deltaAPy; 
             }
 
+            //u 实则就是 ap在ab上的投影比例
+            float u = (deltaAPx * deltaABx + deltaAPy * deltaABy) / segmentABLengthSq ;
 
             //向量ap 点乘  向量 ab，根据两者的夹角、以及投影来判断 p 是位于a左，b右，还是中间
             /*
@@ -35,9 +37,7 @@ namespace NMGen
              *      \
              *      a -----------------  b
              */
-            //u 实则就是 ap在ab上的投影比例
-            float u = (deltaAPx * deltaABx + deltaAPy * deltaABy) / segmentABLengthSq ; 
-            if( u < 0 )
+            if ( u < 0 )
             {
                 return deltaAPx * deltaAPx + deltaAPy * deltaAPy; 
             }
