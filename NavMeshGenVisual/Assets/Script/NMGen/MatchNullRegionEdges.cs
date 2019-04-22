@@ -60,6 +60,7 @@ namespace NMGen
                 float maxDeviation = 0;
                 int iVertToInsert = -1; 
 
+                //如果 AB 边之间的某个顶点对应的是NULL_REGION，那么其中就是连接NULL_REGION 
                 if( NULL_REGION == sourceVerts[iTestVert*4+3] )
                 {
                     //找到在 iVertASource 和 iVertBSource 之间，离对应Simple边最远的顶点

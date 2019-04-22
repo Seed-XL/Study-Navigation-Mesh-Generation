@@ -335,6 +335,58 @@ namespace NMGen
             }
         }
 
+        private static int removeIntersectingSegments(int startVertIndex,
+            int endVertIndex,
+            List<int> verts 
+            )
+        {
+            //最少四个顶点，代表是两个线段
+            if( verts.Count < 16  )
+            {
+                return 0; 
+            }
+            int offset = 0;
+            int startX = verts[startVertIndex * 4 + 0];
+            int startZ = verts[startVertIndex * 4 + 2];
+
+            int endX = verts[endVertIndex * 4 + 0];
+            int endZ = verts[endVertIndex * 4 + 2];
+
+            int vCount = verts.Count / 4;
+            for (int iVert = (endVertIndex + 2) % vCount, iVertMinus = (endVertIndex + 1) % vCount;
+                iVert != startVertIndex;
+                 )  
+            {
+                if( NULL_REGION == verts[iVert*4+3]
+                    && NULL_REGION == verts[ (iVert+1)%vCount*4+3]
+                    && Geometry.segmentsIntersect(startX,startZ,endX,endZ,
+                    verts[iVertMinus*4+0],
+                    verts[iVertMinus*4+2],
+                    verts[iVert*4+0],
+                    verts[iVert*4+2]
+                    )
+                    )
+                {
+
+                }
+            }
+        }
+
+        /// <summary>
+        /// 垂直线段是完全垂直的直线的一部分；也就是说，
+        /// 构成段端点的两个顶点都有相同的x坐标和y坐标，但z坐标不同
+        /// https://pro.arcgis.com/zh-cn/pro-app/tool-reference/appendices/geoprocessing-considerations-for-vertical-segments.htm
+        /// 
+        ///         a * 
+        ///           |
+        ///           |
+        ///           |
+        ///           |
+        ///         b *
+        /// 
+        /// </summary>
+        /// <param name="regionID"></param>
+        /// <param name="verts"></param>
         private static void removeVerticalSegments(int regionID ,List<int> verts)
         {
             for( int pVert = 0; pVert < verts.Count; )

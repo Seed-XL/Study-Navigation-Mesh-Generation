@@ -7,6 +7,43 @@ namespace NMGen
 {
     public static class Geometry
     {
+        public static bool segmentsIntersect(int ax,int ay,
+            int bx,int by,
+            int cx,int cy,
+            int dx,int dy)
+        {
+            int deltaABx = bx - ax;
+            int deltaABy = by - ay;
+
+            int deltaCAx = ax - cx;
+            int deltaCAy = ay - cy;
+
+            int deltaCDx = dx - cx;
+            int deltaCDy = dy - cy;
+
+            int numerator = (deltaCAy * deltaCDx) - (deltaCAx * deltaCDy);  //分子
+            int denominator = (deltaABx * deltaCDy) - (deltaABy * deltaCDx);  //分母
+            
+            if( 0 == denominator 
+                && numerator != 0 )
+            {
+                return false; 
+            }
+
+            float factorAB = numerator / (float)denominator;
+            float factorCD = ( (deltaCAy * deltaABx) - (deltaCAx * deltaABy)) / (float)denominator ; 
+
+            if( (factorAB >= 0.0f)
+                && (factorAB <= 1.0f)
+                && (factorCD >= 0.0f)
+                && (factorCD <= 1.0f))
+            {
+                return true; 
+            }
+
+            return false;
+        }
+
         public static float getPointSegmentDistanceSq(
             int px,int py,   //点P
             int ax,int ay,   //端点 a
