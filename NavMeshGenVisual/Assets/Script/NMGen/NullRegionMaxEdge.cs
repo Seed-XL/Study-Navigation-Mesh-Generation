@@ -69,7 +69,7 @@ namespace NMGen
                     resultVerts.Insert(iNewInsertToResultBase,iNewVertSourceIdxBase);
                     resultVerts.Insert(iNewInsertToResultBase+1, iNewVertSourceIdxBase + 1);
                     resultVerts.Insert(iNewInsertToResultBase+2, iNewVertSourceIdxBase + 2);
-                    resultVerts.Insert(iNewInsertToResultBase+3, iNewVertSourceIdxBase + 3);
+                    resultVerts.Insert(iNewInsertToResultBase+3, iNewVert );  //在原来的顶点列表中的索引
 
                     resultVertCount = resultVerts.Count / 4;  
                 }

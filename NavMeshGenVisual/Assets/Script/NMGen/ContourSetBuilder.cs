@@ -88,7 +88,7 @@ namespace NMGen
                     //重置这个位置
                     span.flags = 0;
                     discardedContours++;
-                    Logger.LogWarning("[ContourSetBuilder][apply]Island Span|{0}",span.regionID()); 
+                    Logger.LogWarning("[ContourSetBuilder][apply]Island Span|{0}|{1}",span.regionID(),discardedContours); 
                 }
 
             }  //while iter  
@@ -126,6 +126,23 @@ namespace NMGen
                 generateSimplifiedContour(span.regionID(),
                     workingRawVerts,
                     ref workingSimplifiedVerts); 
+
+                if( workingSimplifiedVerts.Count  < 12  )
+                {
+                    Logger.LogWarning("[ContourSetBuilder][build]Discarded Contour|{0}|{1}|",span.regionID(),discardedContours);
+                    discardedContours++;
+                }
+                else
+                {
+                    result.add(new Contour(span.regionID(),
+                        workingRawVerts,
+                        workingSimplifiedVerts)); 
+                }
+
+                if( discardedContours > 0  )
+                {
+                    Logger.LogWarning("[ContourSetBuilder][build]Contours not generated|{0}|", , discardedContours);
+                }
 
             } // while iter 
 
@@ -189,7 +206,7 @@ namespace NMGen
                     }
                 } // for 
 
-                //最低点和最高点，连在一起
+                //TODO ? 最低点和最高点，连在一起
                 outVerts.Add(llx);
                 outVerts.Add(lly);
                 outVerts.Add(llz);
@@ -208,7 +225,7 @@ namespace NMGen
                     ++iVert )
                 {
                     //当前顶点与下一个顶点属于不同的Region，所以是一个突变点？
-                    if( !(sourceVerts[iVert*4+3] == sourceVerts[((iVert+1)%vCount)*4+3] ) )
+                    if( sourceVerts[iVert*4+3] != sourceVerts[((iVert+1)%vCount)*4+3]  )
                     {
                         outVerts.Add(sourceVerts[iVert * 4]);
                         outVerts.Add(sourceVerts[iVert * 4 + 1]);
@@ -302,6 +319,44 @@ namespace NMGen
                 }
             }  // outVerts.Count < 12 
 
+
+                /*  
+                 * 这里搞不太懂。
+                 * 根据Simple集合的生成原理，假如Raw集合点A是属于Simple集合的，那Raw集中中的A+1点
+                 * 有可能在Simple集合里，也有可能不在。
+                 * 当A+1和A+2不相等的时候，A+1就在Simple里面。那这个时候A取A+1的Region有啥意义呢？
+                 * 因为A和A+1 指向的Region不一样。A+1和A+2指向的Region也不一样。
+                 * 
+                 * 
+                 * 
+                 *           y region 
+                 *   a  --------------------  b
+                 *      \                   /
+                 *       \                 /
+                 *        \               /
+                 *         \             /
+                 *          \           /
+                 *           \         /  z region 
+                 *  x region  \       /
+                 *             \     /
+                 *              \   /
+                 *                c
+                 *   
+                 *   看这图:
+                 *   a顶点 connect的是x region    
+                 *   b顶点 connect的是y region          
+                 *   c顶点 connect的是z region    
+                 *   
+                 *   那么，如果按照下面的代码，取下一个源顶点当作是自己连的Region的话，那么就变成了
+                 *   a ----> y
+                 *   b ----> z
+                 *   c ----> x 
+                 *   
+                 *   从结果上来看，这个Contour连接的Regoin都没有改变过。而且因为代码是环绕的，所以取本身的
+                 *   或者取下一个Source的RegionID，本质是都是没有问题的。      
+                 *   
+                 *   而且在后续的代码中看来，线段连接的Region，是以线段的右端点连接的Region来决定的。    
+                 */
             sourceVertCount = sourceVerts.Count / 4;
             int simplifiedVertCount = outVerts.Count / 4; 
 
@@ -312,8 +367,8 @@ namespace NMGen
                 //  这里不是明显有问题么？因为有可能是不同的Region
                 int iVertSourceIdx = iVert * 4 + 3;
                 //这个我先注释掉
-                //int sourceVertIndex = ( outVerts[iVertSourceIdx] + 1 ) % sourceVertCount ;
-                int sourceVertIndex = (outVerts[iVertSourceIdx]) % sourceVertCount;
+                int sourceVertIndex = ( outVerts[iVertSourceIdx] + 1 ) % sourceVertCount ;
+                //int sourceVertIndex = (outVerts[iVertSourceIdx]) % sourceVertCount;
                 outVerts[iVertSourceIdx] = sourceVerts[sourceVertIndex * 4 + 3];  //将输出Idx连接的Region设置为下一个顶点的Region
             }
 
@@ -327,11 +382,19 @@ namespace NMGen
             int vCount = startSize / 4; 
             for(int iVert = 0; iVert < vCount; ++iVert)
             {
+                //你看，这里是以Next的端点来判断是不是连接到 non-null region edge
                 int iVertNext = (iVert + 1) % vCount; 
                 if( NULL_REGION != verts[iVertNext*4+3] )
                 {
-                    iVert += removeIntersectingSegments()
+                    //检查线段： iVert->iVertNext 是不是一个 non-null region edge ？
+                    iVert += removeIntersectingSegments(iVert,iVertNext,verts);
+                    vCount = verts.Count / 4;   
                 }
+            }// for 
+
+            if( startSize != verts.Count )
+            {
+                Logger.LogWarning("[ContourSetBuilder][removeIntersectingSegments]{0}|{1}|{2}",regionID,startSize,verts.Count ); 
             }
         }
 
@@ -352,24 +415,67 @@ namespace NMGen
             int endX = verts[endVertIndex * 4 + 0];
             int endZ = verts[endVertIndex * 4 + 2];
 
+            //有点误导人啊，直接说是接着endVertIndex接下来的两点是
+            // iVertMinus 和 iVert，不就好了，非得反过来写
             int vCount = verts.Count / 4;
             for (int iVert = (endVertIndex + 2) % vCount, iVertMinus = (endVertIndex + 1) % vCount;
                 iVert != startVertIndex;
                  )  
             {
-                if( NULL_REGION == verts[iVert*4+3]
-                    && NULL_REGION == verts[ (iVert+1)%vCount*4+3]
+                /* 
+                 * 当一个顶点同时满足下面的条件时需要删掉掉：
+                 * 1、一个顶点的两侧都是连接到 null-region 
+                 *  null region segment - vertex - null region segment 
+                 *  
+                 * 2、属于与测试线段相交的线段
+                 * 
+                 */
+
+                //以右端点连接的区域为线段连接的区域吗？
+                if( NULL_REGION == verts[iVert*4+3]  //线段  vertMinus--iVert 
+                    && NULL_REGION == verts[ (iVert+1)%vCount*4+3]  //iVert--- iVert+1
                     && Geometry.segmentsIntersect(startX,startZ,endX,endZ,
                     verts[iVertMinus*4+0],
                     verts[iVertMinus*4+2],
                     verts[iVert*4+0],
-                    verts[iVert*4+2]
-                    )
+                    verts[iVert*4+2] )
                     )
                 {
+                    int removeIndexBase = iVert * 4;
+                    verts.Remove(removeIndexBase);
+                    verts.Remove(removeIndexBase); //+1
+                    verts.Remove(removeIndexBase); //+2
+                    verts.Remove(removeIndexBase); //+3
 
+                    //小于start可以理解 ，但是为什么小于endVertIndex也要？
+                    if( iVert < startVertIndex 
+                        || iVert < endVertIndex  )
+                    {
+                        startVertIndex--;
+                        endVertIndex--;
+                        offset--;  
+                    }
+
+                    //TODO why？？？
+                    //两种情况会出现这个：
+                    //1、 iVert在一开始就环绕回起点了
+                    //2、 iVert被删除了两次，因为本来iVert就比iVertMinus大1
+                    if( iVert < iVertMinus )
+                    {
+                        iVertMinus--; 
+                    }
+
+                    vCount = verts.Count / 4;
+                    iVert = iVert % vCount; 
+                }  // if
+                else
+                {
+                    iVertMinus = iVert;
+                    iVert = (iVert + 1) % vCount; 
                 }
-            }
+            } // for 
+
+            return offset; 
         }
 
         /// <summary>
@@ -436,7 +542,7 @@ namespace NMGen
 
             while( ++loopCount < ushort.MaxValue  )
             {
-                //这是一个突变点
+                //这个Edge的一个Span
                 if( !isSameRegion(span,dir) )
                 {
                     //span

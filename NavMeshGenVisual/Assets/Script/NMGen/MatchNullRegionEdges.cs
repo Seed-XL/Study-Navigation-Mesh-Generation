@@ -38,7 +38,7 @@ namespace NMGen
             while( iResultVertA < simplifiedVertCount )
             {
                 //简化顶点的第二个
-                int iResultVertB = (iResultVertA + 1) % simplifiedVertCount ; //下一个顶点
+                int iResultVertB = (iResultVertA + 1) % simplifiedVertCount ; //下一个简化边顶点
 
                 //ay = inoutResultVerts[iResultVertA * 4 + 1] ;
                 int ax = inoutResultVerts[iResultVertA * 4];

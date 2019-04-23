@@ -7,30 +7,54 @@ namespace NMGen
 {
     public static class Geometry
     {
+
+
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="ax"></param>
+        /// <param name="ay"></param>
+        /// <param name="bx"></param>
+        /// <param name="by"></param>
+        /// <param name="cx"></param>
+        /// <param name="cy"></param>
+        /// <param name="dx"></param>
+        /// <param name="dy"></param>
+        /// <returns></returns>
         public static bool segmentsIntersect(int ax,int ay,
             int bx,int by,
             int cx,int cy,
             int dx,int dy)
         {
+            //线段AB
             int deltaABx = bx - ax;
             int deltaABy = by - ay;
 
+            //线段AC
             int deltaCAx = ax - cx;
             int deltaCAy = ay - cy;
 
+            //线段CD
             int deltaCDx = dx - cx;
             int deltaCDy = dy - cy;
 
+            //分子， CD X AC
             int numerator = (deltaCAy * deltaCDx) - (deltaCAx * deltaCDy);  //分子
-            int denominator = (deltaABx * deltaCDy) - (deltaABy * deltaCDx);  //分母
-            
-            if( 0 == denominator 
-                && numerator != 0 )
+            //分母  ，AB X CD
+            int denominator = (deltaABx * deltaCDy) - (deltaABy * deltaCDx);  
+
+            //看跨立那一组说明
+            //https://dev.gameres.com/Program/Abstract/Geometry.htm#%E5%88%A4%E6%96%AD%E4%B8%A4%E7%BA%BF%E6%AE%B5%E6%98%AF%E5%90%A6%E7%9B%B8%E4%BA%A4
+            if ( 0 == denominator   //叉乘等于0，平行，所以不会相交，sin值等于0
+                && numerator != 0 )  //为什么要判断这个呢？这个不只是符号吗？
             {
                 return false; 
             }
 
+            //参考这个：https://blog.csdn.net/wcl0617/article/details/78654944
             float factorAB = numerator / (float)denominator;
+            //AB X AC
             float factorCD = ( (deltaCAy * deltaABx) - (deltaCAx * deltaABy)) / (float)denominator ; 
 
             if( (factorAB >= 0.0f)
