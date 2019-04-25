@@ -138,16 +138,58 @@ namespace NMGen
                         workingRawVerts,
                         workingSimplifiedVerts)); 
                 }
-
-                if( discardedContours > 0  )
-                {
-                    Logger.LogWarning("[ContourSetBuilder][build]Contours not generated|{0}|", , discardedContours);
-                }
-
             } // while iter 
 
+            if (discardedContours > 0)
+            {
+                Logger.LogWarning("[ContourSetBuilder][build]Contours not generated|{0}|", discardedContours);
+            }
 
-            return null; 
+            if( result.size() + discardedContours 
+                != sourceField.regionCount() - 1 )
+            {
+                for(int regionID = 1; regionID < sourceField.regionCount(); ++regionID )
+                {
+                    int regionMatches = 0; 
+                    for(int iContour = 0; iContour < result.size(); ++iContour )
+                    {
+                        if( regionID == result.get(iContour).regionID )
+                        {
+                            regionMatches++;  
+                        }
+                    }
+
+                    if( regionMatches > 1 )
+                    {
+                        Logger.LogError("[ContourSetBuilder][build]More than |{0}|{1}",regionID,regionMatches); 
+                    }
+                } // for 
+
+                for(int iContour = 0; iContour < result.size(); ++iContour )
+                {
+                    Contour contour = result.get(iContour); 
+                    if( contour.regionID <= 0 )
+                    {
+                        Logger.LogError("[ContourSetBuilder][build]null region contour"); 
+                    }
+                    else if( contour.regionID >= sourceField.regionCount() )
+                    {
+                        Logger.LogError("[ContourSetBuilder][build]contour out of range|{0}",contour.regionID);
+                    }
+                } // for
+
+                Logger.LogError("[ContourSetBuilder][build]Error{0}|{1}|{2}|{3}",
+                    sourceField.regionCount() - 1,
+                    result.size() + discardedContours,
+                    result.size() ,
+                    discardedContours
+                    ); 
+
+                return null; 
+            }
+
+
+            return result ; 
         } // build 
 
         private void generateSimplifiedContour(int regionID,
