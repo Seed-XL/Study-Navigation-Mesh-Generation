@@ -127,6 +127,7 @@ namespace NMGen
                     workingRawVerts,
                     ref workingSimplifiedVerts); 
 
+                //TODO 为什么小于12个顶点就不行呢？
                 if( workingSimplifiedVerts.Count  < 12  )
                 {
                     Logger.LogWarning("[ContourSetBuilder][build]Discarded Contour|{0}|{1}|",span.regionID(),discardedContours);
