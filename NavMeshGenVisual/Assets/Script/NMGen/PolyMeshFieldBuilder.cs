@@ -7,8 +7,8 @@ namespace NMGen
 {
     public class PolyMeshFieldBuilder
     {
-        private readonly static long FLAG = 0x80000000;  // 20 000 000 000
-        private readonly static long DEFLAG = 0x0FFFFFFF;  //1777 777 777
+        private readonly static int FLAG = 0x8000000;  // 20 000 000 000
+        private readonly static int DEFLAG = 0xFFFFFFF;  //1777 777 777
 
         private int mMaxVertsPerPoly; 
 
@@ -66,9 +66,10 @@ namespace NMGen
             int[] contourToGlobalIndicesMap = new int[maxVertsPerContour];
             Dictionary<int, int> vertIndices = new Dictionary<int, int>();
 
-            List<long> workingIndices = new List<long>(maxVertsPerContour);
-            List<long> workingTriangles = new List<long>(maxVertsPerContour);
+            List<int> workingIndices = new List<int>(maxVertsPerContour);
+            List<int> workingTriangles = new List<int>(maxVertsPerContour);
 
+            //TODO 为什么要+1？
             int[] workingPolys = new int[(maxVertsPerContour + 1) * mMaxVertsPerPoly];
             int workingPolyCount = 0;
             int[] mergeInfo = new int[3];
@@ -91,14 +92,14 @@ namespace NMGen
                 } // for contour.vert
 
                 //三角剖分
-                int triangleCount = triangulate(contour.verts, workingIndices, workingTriangles); 
+                int triangleCount = triangulate(contour.verts, ref workingIndices,ref  workingTriangles); 
 
             } // for contours
         } // build 
 
         private static int triangulate(int[] verts,
-            ref List<long> inoutIndices ,
-            ref List<long> outTriangles )
+            ref List<int> inoutIndices ,
+            ref List<int> outTriangles )
         {
             outTriangles.Clear();  
             for(int i = 0; i < inoutIndices.Count; ++i)
@@ -115,10 +116,20 @@ namespace NMGen
 
         private static bool isValidPartition(int indexA,int indexB,
             int[] verts,
-            List<long> indices)
+            List<int> indices)
         {
             return liesWithinInternalAngle(indexA, indexB, verts, indices)
                 && !hasIllegalEdgeIntersection(indexA, indexB, verts, indices); 
+        }
+
+        private static bool liesWithinInternalAngle(int indexA,
+            int indexB,
+            int[] verts ,
+            List<int> indices)
+        {
+            int pVertA = ((indices[indexA] & DEFLAG) * 4);
+            int pVertB = ((indices[indexB] & DEFLAG) * 4);
+
         }
 
         //为什么超出之后不是环绕呢？
