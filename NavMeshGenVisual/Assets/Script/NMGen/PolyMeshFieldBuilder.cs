@@ -7,8 +7,8 @@ namespace NMGen
 {
     public class PolyMeshFieldBuilder
     {
-        private readonly static int FLAG = 0x8000000;  // 20 000 000 000
-        private readonly static int DEFLAG = 0xFFFFFFF;  //1777 777 777
+        private readonly static int FLAG = 0x8000000; //最高位用于标记Center 顶点  
+        private readonly static int DEFLAG = 0x0FFFFFF;  //最高位空出来为了消除标记，同时还原顶点。
 
         private int mMaxVertsPerPoly; 
 
@@ -100,6 +100,8 @@ namespace NMGen
                 int triangleCount = triangulate(contour.verts, ref workingIndices,ref  workingTriangles); 
 
             } // for contours
+
+            return null;
         } // build 
 
         private static int triangulate(int[] verts,
@@ -113,10 +115,96 @@ namespace NMGen
                 int iPlus2 = getNextIndex(iPlus1, inoutIndices.Count); 
                 if( isValidPartition(i,iPlus2,verts,inoutIndices) )
                 {
+                    //除了自己所在的位，最高会也被标记了，这个相当于记录自己是CenterVertex
                     inoutIndices[iPlus1] = inoutIndices[iPlus1] | FLAG; 
                 }
 
             } // for inoutIndices
+
+
+            while( inoutIndices.Count > 3 )
+            {
+                int minLengthSq = -1;
+                int iMinLenghtSqVert = -1;
+
+                for(int i = 0; i < inoutIndices.Count; ++i)
+                {
+                    int iPlus1 = getNextIndex(i, inoutIndices.Count); 
+                    //将上面标记的顶点恢复出来
+                    if( ( inoutIndices[iPlus1] & FLAG ) == FLAG  )
+                    {
+                        int vert = (inoutIndices[i] & DEFLAG) * 4;
+                        int vertPlus2 = (inoutIndices[getNextIndex(iPlus1, inoutIndices.Count)] & DEFLAG) * 4;
+
+                        int deltaX = verts[vertPlus2] - verts[vert];
+                        int deltaZ = verts[vertPlus2 + 2] - verts[vert + 2];
+                        int lengthSq = deltaX * deltaX + deltaZ * deltaZ;  
+
+                        if( minLengthSq < 0 
+                            || lengthSq < minLengthSq )
+                        {
+                            minLengthSq = lengthSq;
+                            iMinLenghtSqVert = i;  
+                        }
+
+                    } // if a Center Vertex 
+                } // for inoutIndices
+
+                //三角化失败了，剩余的顶点不能再变成三角形
+                if( iMinLenghtSqVert == -1 )
+                {
+                    return -(outTriangles.Count / 3); 
+                }
+
+                int j = iMinLenghtSqVert;
+                int jPlus1 = getNextIndex(j, inoutIndices.Count);
+
+                outTriangles.Add(inoutIndices[j] & DEFLAG);
+                outTriangles.Add(inoutIndices[jPlus1] & DEFLAG);
+                outTriangles.Add(inoutIndices[getNextIndex(jPlus1, inoutIndices.Count)] & DEFLAG);
+
+                //注意哦，是移除索引的。因为这个顶点已经在新的多边形外边
+                inoutIndices.RemoveAt(jPlus1); 
+
+
+                //防止删除的是特殊的索引
+                if( 0 == jPlus1 
+                    || jPlus1 >= inoutIndices.Count )
+                {
+                    j = inoutIndices.Count - 1;
+                    jPlus1 = 0;
+                }
+
+                //看一下被变动的那两个顶点，是否可以组成新的Partition
+                if( isValidPartition( getPreviousIndex(j,inoutIndices.Count),
+                    jPlus1,
+                    verts,
+                    inoutIndices))
+                {
+                    inoutIndices[j] = inoutIndices[j] | FLAG; 
+                }
+                else
+                {
+                    inoutIndices[j] = inoutIndices[j] | DEFLAG; 
+                }
+
+                if( isValidPartition(j,getNextIndex(jPlus1,inoutIndices.Count),verts,inoutIndices)) 
+                {
+                    inoutIndices[jPlus1] = inoutIndices[jPlus1] | FLAG; 
+                }
+                else
+                {
+                    inoutIndices[jPlus1] = inoutIndices[jPlus1] | DEFLAG; 
+                }
+
+            } // while innoutIndices
+
+            //最后剩下的就是一组了
+            outTriangles.Add(inoutIndices[0] & DEFLAG);
+            outTriangles.Add(inoutIndices[1] & DEFLAG);
+            outTriangles.Add(inoutIndices[2] & DEFLAG);
+
+            return outTriangles.Count / 3;  
         } // triangulate
 
         private static bool isValidPartition(int indexA,int indexB,
@@ -127,6 +215,78 @@ namespace NMGen
                 && !hasIllegalEdgeIntersection(indexA, indexB, verts, indices); 
         }
 
+
+        private static bool hasIllegalEdgeIntersection(int indexA,int indexB,int[] verts,List<int> indices)
+        {
+            int pVertA = (indices[indexA] & DEFLAG) * 4;
+            int pVertB = (indices[indexB] & DEFLAG) * 4; 
+            
+            for(int iPolyEdgeBegin = 0; iPolyEdgeBegin < indices.Count; ++iPolyEdgeBegin )
+            {
+                int iPolyEdgeEnd = getNextIndex(iPolyEdgeBegin, indices.Count); 
+                if( !(iPolyEdgeBegin == indexA
+                    || iPolyEdgeBegin == indexB
+                    || iPolyEdgeEnd == indexA
+                    || iPolyEdgeEnd == indexB))
+                {
+                    int pEdgeVertBegin = (indices[iPolyEdgeBegin] & DEFLAG) * 4;
+                    int pEdgeVertEnd = (indices[iPolyEdgeEnd] & DEFLAG) * 4;
+
+                    bool isBeginPointSameWithA = verts[pEdgeVertBegin] == verts[pVertA]
+                        && verts[pEdgeVertBegin + 2] == verts[pVertA + 2];
+                    bool isBeginPointSameWithB = verts[pEdgeVertBegin] == verts[pVertB]
+                        && verts[pEdgeVertBegin + 2] == verts[pVertB + 2];
+                    bool isEndPointSameWithA = verts[pEdgeVertEnd] == verts[pVertA]
+                        && verts[pEdgeVertEnd + 2] == verts[pVertA + 2];
+                    bool isEndPointSameWithB = verts[pEdgeVertEnd] == verts[pVertB]
+                        && verts[pEdgeVertEnd + 2] == verts[pVertB + 2];  
+                    if ( isBeginPointSameWithA
+                        || isBeginPointSameWithB
+                        || isEndPointSameWithA
+                        || isEndPointSameWithB )
+                    {
+                        continue;
+                    }
+
+                    if( Geometry.segmentsIntersect(verts[pVertA],
+                        verts[pVertA+2],
+                        verts[pVertB],
+                        verts[pVertB+2],
+                        verts[pEdgeVertBegin],
+                        verts[pEdgeVertBegin+2],
+                        verts[pEdgeVertEnd],
+                        verts[pEdgeVertEnd+2] ))
+                    {
+                        return true; 
+                    }
+                }
+            }
+
+            return false;  
+        }
+
+        /*
+         *  请按照图来对号入座
+         * 
+         *      A-1          A-1        A-1    
+         *        \           \          \
+         *         A           A          A
+         *        /            |           \    
+         *      A+1           A+1          A+1
+         *      
+         *      A-1          A-1        A-1
+         *       |            |          |
+         *       A            A          A 
+         *      /             |           \
+         *    A+1            A+1          A+1
+         *      
+         *      A-1          A-1        A-1
+         *       /            /          |
+         *      A            A           A
+         *     /             |            \
+         *   A+1            A+1           A+1
+         * 
+         */
         private static bool liesWithinInternalAngle(int indexA,
             int indexB,
             int[] verts ,
@@ -141,41 +301,37 @@ namespace NMGen
             int pVertAMinus = ((indices[prevIndexA] & DEFLAG) * 4 );
             int pVertAPlus = ((indices[nextIndexA] & DEFLAG) * 4 );
 
-            //这里内角大于180度的情况
-            //点A在 AMinu->APlus的左边 ,坑爹啊，这里是以 APlus为起点来看的
+            
+            //参考网站第二张图。。。然后它是在isRight那个地方返回的
+            //内角小于180度的情况 
+            //点A在 AMinu->APlus的左边 
             if ( isLeftOrCollinear( verts[pVertA],verts[pVertA+2],
                 verts[pVertAMinus],verts[pVertAMinus+2],
                 verts[pVertAPlus],verts[pVertAPlus+2] ) )
             {
-                // B 在 A->AMinus的左边 ,以Minus为起点来看
+                // B 在 A->AMinus的左边 
                 return isLeft( verts[pVertB],verts[pVertB+2],
                     verts[pVertA],verts[pVertA+2],
                     verts[pVertAMinus],verts[pVertAMinus+2] )
-                // B 在 A->APlus的右边 ，以APlus为起点来看
+                // B 在 A->APlus的右边
                 && isRight(verts[pVertB], verts[pVertB + 2],
                     verts[pVertA], verts[pVertA + 2],
                     verts[pVertAPlus], verts[pVertAPlus + 2]);
-            }
+            } 
 
-
-            //内角小于180的情况，如果是位于外角，反转便是了
+            //内角大于180的情况，如果是位于外角，反转便是了
             return !(
                 //判断一下
+                //点B在 A->APlus的左边
                 isLeftOrCollinear(verts[pVertB], verts[pVertB + 2],
                 verts[pVertA], verts[pVertA + 2],
                 verts[pVertAPlus], verts[pVertAPlus + 2])
 
-                && isLeftOrCollinear(verts[pVertB], verts[pVertB + 2],
+                //点B 在 A->AMinus的右边
+                && isRightOrCollinear(verts[pVertB], verts[pVertB + 2],
                 verts[pVertA], verts[pVertA + 2],
-                verts[pVertAMinus], verts[pVertAMinus + 2]) ) ; 
-
-                //源码好像有误，先注释掉
-                //&& isRightOrCollinear( verts[pVertB],verts[pVertB+2],
-                //verts[pVertA],verts[pVertA+2],
-                //verts[pVertAMinus],verts[pVertAMinus+2] ) 
-                //); 
-
-
+                verts[pVertAMinus], verts[pVertAMinus + 2])
+                );
         }
 
         private static bool isRightOrCollinear(int px,int py,
