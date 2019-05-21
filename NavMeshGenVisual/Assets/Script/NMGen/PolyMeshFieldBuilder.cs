@@ -98,11 +98,93 @@ namespace NMGen
 
                 //三角剖分
                 int triangleCount = triangulate(contour.verts, ref workingIndices,ref  workingTriangles); 
+                if( triangleCount <= 0 )
+                {
+                    Logger.LogError("[PolyMeshField][build]Triangulate Contour|{0}", contour.regionID);
+                    continue;  
+                }
+
+
+                for(int iContourVert = 0; iContourVert < contour.vertCount ; ++iContourVert )
+                {
+                    int pContourVert = iContourVert * 4;
+                    int vertHash = getHashCode(contour.verts[pContourVert],
+                        contour.verts[pContourVert + 1],
+                        contour.verts[pContourVert + 2]);
+
+                    int iGlobalVert = 0;
+                    if ( !vertIndices.TryGetValue(vertHash,out iGlobalVert) )
+                    {
+                        iGlobalVert = globalVertCount;
+                        globalVertCount++;
+                        vertIndices.Add(vertHash, iGlobalVert);
+
+                        int newVertsBase = iGlobalVert * 3; 
+                        globalVerts[newVertsBase] = contour.verts[pContourVert];
+                        globalVerts[newVertsBase + 1] = contour.verts[pContourVert + 1];
+                        globalVerts[newVertsBase + 2] = contour.verts[pContourVert + 2]; 
+                    }
+
+                    //Contour Vertex index  -> global vertex index 
+                    contourToGlobalIndicesMap[iContourVert] = iGlobalVert; 
+                } // for iContourVert
+
+
+                for(int i = 0; i < workingPolys.Length; ++i)
+                {
+                    workingPolys[i] = PolyMeshField.NULL_INDEX; 
+                } // for workingPolys
+
+                workingPolyCount = 0; 
+                for(int i = 0; i < triangleCount; ++i)
+                {
+                    /*
+                     *  workingTraingles 储存的是上一步三角剖分的三角形的顶点索引
+                     *                     ||
+                     *                      V 
+                     *  contourToGlobalIndicesMap 储存的是轮廓顶点索引，对应在全局顶点表的索引关系
+                     *                     ||
+                     *                     V
+                     *  workingPolys 中 储存的则是全局的顶点索引
+                     *  
+                     *  
+                     */
+
+
+                    int polyIdxBase = workingPolyCount * mMaxVertsPerPoly;
+                    int triangleIdxBase = i * 3; 
+                    workingPolys[polyIdxBase] =
+                        contourToGlobalIndicesMap[workingTriangles[triangleIdxBase]];
+                    workingPolys[polyIdxBase+1] =
+                        contourToGlobalIndicesMap[workingTriangles[triangleIdxBase+1]];
+                    workingPolys[polyIdxBase+2] =
+                        contourToGlobalIndicesMap[workingTriangles[triangleIdxBase]+2];
+
+                    workingPolyCount++;  
+
+                }  //triangleCount 
+
+                if( mMaxVertsPerPoly > 3 )
+                {
+                    while( true )
+                    {
+
+                    } // while true
+                } // if MaxVertsPerPoly 
 
             } // for contours
 
             return null;
         } // build 
+
+        private static int getHashCode(int x,int y,int z)
+        {
+            uint h1 = 0x8da6b343;
+            uint h2 = 0xd8163841;
+            uint h3 = 0xcb1ab31f;
+            long n = h1 * x + h2 * y + h3 * z; 
+            return  (int)(n & ((1<<12)-1)); 
+        }
 
         private static int triangulate(int[] verts,
             ref List<int> inoutIndices ,
