@@ -98,7 +98,7 @@ namespace NMGen
         /// <param name="polys"></param>
         /// <param name="maxVertsPerPoly"></param>
         /// <returns></returns>
-        private static int getPolyVertCount(int polyPointer ,
+        public static int getPolyVertCount(int polyPointer ,
             int[] polys,
             int maxVertsPerPoly )
         {

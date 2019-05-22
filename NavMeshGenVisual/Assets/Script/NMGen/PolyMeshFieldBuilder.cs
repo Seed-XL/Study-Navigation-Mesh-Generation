@@ -164,10 +164,36 @@ namespace NMGen
 
                 }  //triangleCount 
 
+                //合并三角形
                 if( mMaxVertsPerPoly > 3 )
                 {
-                    while( true )
+                    while (true)
                     {
+                        int longestMergeEdge = -1;
+                        int pBestPolyA = -1;
+                        int iPolyAVert = -1;
+                        int pBestPolyB = -1;
+                        int iPolyBVert = -1;
+
+                        
+                        for(int iPolyA = 0; iPolyA < workingPolyCount - 1;++iPolyA)
+                        {
+                            for(int iPolyB = iPolyA+1; iPolyB < workingPolyCount; ++iPolyB)
+                            {
+                                //因为一个多边形最多有mMaxVertsPerPoly的点，所以
+                                //多边形的真正起点为就是用多边形的索引乘以顶点数
+                                //Can polyB merge with polyA?
+                                getPolyMergeInfo(iPolyA * mMaxVertsPerPoly,
+                                    iPolyB * mMaxVertsPerPoly,
+                                    workingPolys,
+                                    globalVerts,
+                                    result.maxVertsPerPoly(),
+                                    mergeInfo); 
+                            }
+                        }
+
+
+
 
                     } // while true
                 } // if MaxVertsPerPoly 
@@ -176,6 +202,79 @@ namespace NMGen
 
             return null;
         } // build 
+
+        private static void getPolyMergeInfo(int polyAPointer,int polyBPointer,
+            int[] polys,int[] verts ,
+            int maxVertsPerPoly ,int[] outResult )
+        {
+            outResult[0] = -1;
+            outResult[1] = -1;
+            outResult[2] = -1;
+
+            int vertCountA = PolyMeshField.getPolyVertCount(polyAPointer, polys, maxVertsPerPoly);
+            int vertCountB = PolyMeshField.getPolyVertCount(polyBPointer, polys, maxVertsPerPoly);
+
+            //减2 是因为合并了一条边，少了两个顶点
+            if( vertCountA + vertCountB - 2 > maxVertsPerPoly )
+            {
+                return; 
+            }
+
+            for(int iPolyVertA = 0; iPolyVertA < vertCountA; ++iPolyVertA)
+            {
+                int iVertA = polys[polyAPointer + iPolyVertA];
+                int iVertANext = polys[polyAPointer + getNextIndex(iPolyVertA, vertCountA)]; 
+
+                for(int iPolyVertB = 0; iPolyVertB < vertCountB; ++iPolyVertB)
+                {
+                    int iVertB = polys[polyBPointer + iPolyVertB];
+                    int iVertBNext = polys[polyBPointer + getNextIndex(iPolyVertB, vertCountB)]; 
+
+                    /*
+                     *    同一种顶点顺序，两个点是重合的话， 就是共享边了。
+                     *    A/B+1
+                     *     \
+                     *      \ 
+                     *      A+1/B
+                     */
+
+                    if( iVertA == iVertBNext
+                        && iVertANext == iVertB )
+                    {
+                        outResult[1] = iPolyVertA;
+                        outResult[2] = iPolyVertB; 
+                    }
+                } //iPolyB
+            }// iPolyA
+
+
+            if( -1 == outResult[1] )
+            {
+                return; 
+            }
+
+            //对顺时针包含的多边形有效
+            int pSharedVertMinus;
+            int pSharedVert;
+            int pSharedVertPlus;
+
+            //为什么是3呢？后面不是没有三角形了么?
+            //A-1
+            pSharedVertMinus = polys[polyAPointer + getPreviousIndex(outResult[1], vertCountA)] * 3;  
+            //A
+            pSharedVert = polys[polyAPointer + outResult[1]] * 3;
+            //????TODO，用B的，还是B+2了卧槽。。。
+            pSharedVertPlus = polys[polyBPointer + ((outResult[2] + 2) % vertCountB)] * 3; 
+
+            if(!isLeft(verts[pSharedVert],verts[pSharedVert+2],
+                verts[pSharedVertMinus],verts[pSharedVertMinus+2],
+                verts[pSharedVertPlus],verts[pSharedVertPlus+2]
+                ))
+            {
+                return; 
+            }
+
+        }
 
         private static int getHashCode(int x,int y,int z)
         {
