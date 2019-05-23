@@ -51,10 +51,10 @@ namespace NMGen
                 return null; 
             }
 
-            int[] globalVerts = new int[sourceVertCount * 3];
+            int[] globalVerts = new int[sourceVertCount * 3];  //存的是索引
             int globalVertCount = 0;
 
-            int[] globalPolys = new int[maxPossiblePolygons * mMaxVertsPerPoly]; 
+            int[] globalPolys = new int[maxPossiblePolygons * mMaxVertsPerPoly];  //存的也是索引
             for(int i = 0; i < globalPolys.Length; ++i)
             {
                 globalPolys[i] = PolyMeshField.NULL_INDEX; 
@@ -63,7 +63,7 @@ namespace NMGen
             int[] globalRegions = new int[maxPossiblePolygons];
             int globalPolyCount = 0;
 
-            int[] contourToGlobalIndicesMap = new int[maxVertsPerContour];
+            int[] contourToGlobalIndicesMap = new int[maxVertsPerContour]; //存的也是索引
             Dictionary<int, int> vertIndices = new Dictionary<int, int>();
 
             List<int> workingIndices = new List<int>(maxVertsPerContour);
@@ -112,6 +112,8 @@ namespace NMGen
                         contour.verts[pContourVert + 1],
                         contour.verts[pContourVert + 2]);
 
+                    //vertIndices 里面储存的是根据顶点xyz hash出来的key，对应的在全局顶点表中的索引
+                    //全局顶点表 以 xyz 3个为一组，储存轮廓的顶点
                     int iGlobalVert = 0;
                     if ( !vertIndices.TryGetValue(vertHash,out iGlobalVert) )
                     {
@@ -125,6 +127,7 @@ namespace NMGen
                         globalVerts[newVertsBase + 2] = contour.verts[pContourVert + 2]; 
                     }
 
+                    //这个东东是临时用的，就是记录 轮廓中某个顶点的索引，对应的是在全局顶点表中索引
                     //Contour Vertex index  -> global vertex index 
                     contourToGlobalIndicesMap[iContourVert] = iGlobalVert; 
                 } // for iContourVert
@@ -188,7 +191,7 @@ namespace NMGen
                                     workingPolys,
                                     globalVerts,
                                     result.maxVertsPerPoly(),
-                                    mergeInfo); 
+                                    out mergeInfo); 
                             }
                         }
 
@@ -205,8 +208,10 @@ namespace NMGen
 
         private static void getPolyMergeInfo(int polyAPointer,int polyBPointer,
             int[] polys,int[] verts ,
-            int maxVertsPerPoly ,int[] outResult )
+            int maxVertsPerPoly ,out int[] outResult )
         {
+            outResult = new int[3]; 
+
             outResult[0] = -1;
             outResult[1] = -1;
             outResult[2] = -1;
@@ -258,12 +263,13 @@ namespace NMGen
             int pSharedVert;
             int pSharedVertPlus;
 
-            //为什么是3呢？后面不是没有三角形了么?
+            //为什么是3呢?是因为xyz为一组
             //A-1
             pSharedVertMinus = polys[polyAPointer + getPreviousIndex(outResult[1], vertCountA)] * 3;  
             //A
             pSharedVert = polys[polyAPointer + outResult[1]] * 3;
             //????TODO，用B的，还是B+2了卧槽。。。
+            //我艹，B+2 对应的就是图上的A+1
             pSharedVertPlus = polys[polyBPointer + ((outResult[2] + 2) % vertCountB)] * 3; 
 
             if(!isLeft(verts[pSharedVert],verts[pSharedVert+2],
