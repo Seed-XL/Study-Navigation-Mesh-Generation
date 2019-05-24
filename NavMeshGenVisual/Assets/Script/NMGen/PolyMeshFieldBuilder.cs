@@ -192,14 +192,79 @@ namespace NMGen
                                     globalVerts,
                                     result.maxVertsPerPoly(),
                                     out mergeInfo); 
-                            }
+
+                                if( mergeInfo[0] > longestMergeEdge )
+                                {
+                                    longestMergeEdge = mergeInfo[0];
+                                    pBestPolyA = iPolyA * mMaxVertsPerPoly;
+                                    iPolyAVert = mergeInfo[1];
+                                    pBestPolyB = iPolyB * mMaxVertsPerPoly;
+                                    iPolyBVert = mergeInfo[2]; 
+                                }
+                            } // for iPolyB
+                        } // for iPolyA
+
+                        if( longestMergeEdge <= 0 )
+                        {
+                            break; 
                         }
 
+                        for(int i = 0; i < mergedPoly.Length; ++i)
+                        {
+                            mergedPoly[i] = PolyMeshField.NULL_INDEX; 
+                        }
+
+                        int vertCountA = PolyMeshField.getPolyVertCount(pBestPolyA, workingPolys, result.maxVertsPerPoly());
+                        int vertCountB = PolyMeshField.getPolyVertCount(pBestPolyB, workingPolys, result.maxVertsPerPoly());
+                        int position = 0; 
 
 
+                        for(int i = 0; i < vertCountA - 1; ++i)
+                        {
+                            //pBestPolyA 为多边形对应的基索引
+                            //iPolyAVert 为共享的一个端点
+                            //+1 指的是共享点下一个顶点开始
+                            int polyIdx = pBestPolyA + ((iPolyAVert + 1 + i) % vertCountA);
+                            mergedPoly[position++] = workingPolys[polyIdx];  
+                        } // for vertCountA
 
+                        for(int i = 0;i < vertCountB - 1; ++i)
+                        {
+                            int polyIdx = pBestPolyB + ((iPolyBVert + 1 + i) % vertCountB);
+                            mergedPoly[position++] = workingPolys[polyIdx];
+                        }
+
+                        //将合并之后的顶点拷到A指定的多边形
+                        Array.Copy(mergedPoly, 0, workingPolys, pBestPolyA, mMaxVertsPerPoly);
+                        //将多边形B删除
+                        Array.Copy(workingPolys, pBestPolyB + mMaxVertsPerPoly, workingPolys, pBestPolyB, workingPolys.Length - pBestPolyB - mMaxVertsPerPoly);
+
+                        workingPolyCount--; 
                     } // while true
                 } // if MaxVertsPerPoly 
+
+                for(int i = 0; i < workingPolyCount; ++i)
+                {
+                    Array.Copy(workingPolys, i * mMaxVertsPerPoly,
+                        globalPolys, globalPolyCount * mMaxVertsPerPoly, mMaxVertsPerPoly);
+                    globalRegions[globalPolyCount] = contour.regionID;
+                    globalPolyCount++; 
+                }
+
+                //xyz为一组
+                result.verts = new int[globalVertCount * 3];
+                Array.Copy(globalVerts,0,result.verts,0,globalVertCount * 3);
+
+                //TODO
+                result.polys = new int[globalPolyCount * mMaxVertsPerPoly * 2];
+                for(int iPoly = 0; iPoly < globalPolyCount; ++iPoly)
+                {
+                    int pPoly = iPoly * mMaxVertsPerPoly; 
+                    for(int offset = 0; offset < mMaxVertsPerPoly; ++offset )
+                    {
+                        
+                    }
+                }
 
             } // for contours
 
@@ -269,7 +334,7 @@ namespace NMGen
             //A
             pSharedVert = polys[polyAPointer + outResult[1]] * 3;
             //????TODO，用B的，还是B+2了卧槽。。。
-            //我艹，B+2 对应的就是图上的A+1
+            //我艹，B+2 对应的就是图上的A+1，这个并不是真是意义是A点的下一个点
             pSharedVertPlus = polys[polyBPointer + ((outResult[2] + 2) % vertCountB)] * 3; 
 
             if(!isLeft(verts[pSharedVert],verts[pSharedVert+2],
@@ -279,6 +344,25 @@ namespace NMGen
             {
                 return; 
             }
+
+            pSharedVertMinus = polys[polyBPointer + getPreviousIndex(outResult[2], vertCountB)] * 3; 
+            pSharedVert = polys[polyBPointer + outResult[2]] * 3;
+            pSharedVertPlus = polys[polyAPointer + ((outResult[1] + 2) % vertCountA)] * 3; 
+
+            if( !isLeft(verts[pSharedVert],verts[pSharedVert+2],
+                verts[pSharedVertMinus],verts[pSharedVertMinus+2],
+                verts[pSharedVertPlus],verts[pSharedVertPlus+2])) 
+            {
+                return; 
+            }
+
+            //共享边
+            pSharedVertMinus = polys[polyAPointer + outResult[1]] * 3;
+            pSharedVert = polys[polyAPointer + getNextIndex(outResult[1], vertCountA)] * 3;
+
+            int deltaX = verts[pSharedVertMinus + 0] - verts[pSharedVert + 0];
+            int deltaZ = verts[pSharedVertMinus + 2] - verts[pSharedVert + 2];
+            outResult[0] = deltaX * deltaX + deltaZ * deltaZ; 
 
         }
 
@@ -574,7 +658,7 @@ namespace NMGen
              *        v0 - - -- v1
              *            
              *  
-             *      A = 1/2 | V X W|
+             *      A = 1/2 | V x W|
              *        = 1/2 | (v1-v0) x (v2-v0)|
              * 
              * =>  2A = (x1-x0)(y2-y0) - (x2-x0)(y1-y0)
