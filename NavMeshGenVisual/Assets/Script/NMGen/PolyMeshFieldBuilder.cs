@@ -138,6 +138,7 @@ namespace NMGen
                     workingPolys[i] = PolyMeshField.NULL_INDEX; 
                 } // for workingPolys
 
+                //只有这个阶段是三角形
                 workingPolyCount = 0; 
                 for(int i = 0; i < triangleCount; ++i)
                 {
@@ -251,25 +252,156 @@ namespace NMGen
                     globalPolyCount++; 
                 }
 
-                //xyz为一组
-                result.verts = new int[globalVertCount * 3];
-                Array.Copy(globalVerts,0,result.verts,0,globalVertCount * 3);
-
-                //TODO
-                result.polys = new int[globalPolyCount * mMaxVertsPerPoly * 2];
-                for(int iPoly = 0; iPoly < globalPolyCount; ++iPoly)
-                {
-                    int pPoly = iPoly * mMaxVertsPerPoly; 
-                    for(int offset = 0; offset < mMaxVertsPerPoly; ++offset )
-                    {
-                        
-                    }
-                }
-
             } // for contours
 
-            return null;
+            //xyz为一组
+            result.verts = new int[globalVertCount * 3];
+            Array.Copy(globalVerts, 0, result.verts, 0, globalVertCount * 3);
+
+            result.polys = new int[globalPolyCount * mMaxVertsPerPoly * 2];
+            for (int iPoly = 0; iPoly < globalPolyCount; ++iPoly)
+            {
+                int pPoly = iPoly * mMaxVertsPerPoly;  //第几个Poly的索引
+                for (int offset = 0; offset < mMaxVertsPerPoly; ++offset)
+                {
+                    //result里的多边形是以 2 * mMaxVertsPerPoly为一组的
+                    //第一组 mMaxVertsPerPoly 是多边形自身的数据 
+                    //第二组 mMaxVertsPertPol 是邻接多边形的数据
+                    //而globalPolys就是以一组 mMaxVertsPerPoly
+                    result.polys[pPoly * 2 + offset] = globalPolys[pPoly + offset];
+                    result.polys[pPoly * 2 + mMaxVertsPerPoly + offset] = PolyMeshField.NULL_INDEX;
+                }
+            } // for 
+
+            result.polyRegions = new int[globalPolyCount];
+            Array.Copy(globalRegions, 0, result.polyRegions, 0, globalPolyCount);
+
+            buildAdjacencyData(result); 
+
+            return result;
         } // build 
+
+        private static void buildAdjacencyData(PolyMeshField mesh)
+        {
+            int vertCount = mesh.verts.Length / 3;
+            int polyCount = mesh.polyRegions.Length;
+            int maxEdgeCount = polyCount * mesh.maxVertsPerPoly();  // 多边形的个数乘以顶点数？
+
+            int[] edges = new int[maxEdgeCount * 6];
+            int edgeCount = 0;
+
+            int[] startEdge = new int[vertCount]; 
+            for(int i = 0;i < startEdge.Length;++i )
+            {
+                startEdge[i] = PolyMeshField.NULL_INDEX; 
+            }
+
+            //数组链表
+            int[] nextEdge = new int[maxEdgeCount]; 
+            for(int iPoly = 0; iPoly < polyCount; ++iPoly)
+            {
+                int pPoly = iPoly * mesh.maxVertsPerPoly() * 2; //两组maxVertPerPoly为步长
+                for (int vertOffset = 0; vertOffset < mesh.maxVertsPerPoly(); ++vertOffset) 
+                {
+                    int iVert = mesh.polys[pPoly + vertOffset];  //第一组maxVertsPerPoly的数据 
+                    if( PolyMeshField.NULL_INDEX == iVert )
+                    {
+                        break; 
+                    }
+
+                    //如果 maxVertsPerPoly = 6 ，那当vertOffset = 5 的时候会发生什么？
+                    //那iNextVert就会回到起点
+                    int iNextVert; 
+                    if( vertOffset + 1 >= mesh.maxVertsPerPoly() 
+                        || mesh.polys[pPoly+vertOffset+1] == PolyMeshField.NULL_INDEX) 
+                    {
+                        iNextVert = mesh.polys[pPoly];  
+                    }
+                    else
+                    {
+                        iNextVert = mesh.polys[pPoly + vertOffset + 1]; 
+                    }
+
+                    if( iVert < iNextVert )
+                    {
+                        int edgeBaseIdx = edgeCount * 6; 
+                        //一条边的两个端点
+                        edges[edgeBaseIdx] = iVert;
+                        edges[edgeBaseIdx + 1] = iNextVert;
+
+                        //这条边在多边形里面的信息
+                        edges[edgeBaseIdx + 2] = iPoly;
+                        edges[edgeBaseIdx + 3] = vertOffset;
+
+                        //默认是边界边
+                        edges[edgeBaseIdx + 4] = PolyMeshField.NULL_INDEX;
+                        edges[edgeBaseIdx + 5] = PolyMeshField.NULL_INDEX;
+
+
+                        //倒插链表？ iVert顶点 -> edgeCount 边 -> 然后edgeCount 就是链表尾了
+                        //TODO  源码这里也是这样，不知道为毛
+                        nextEdge[edgeCount] = startEdge[iVert];  //???这个东西不是NULL_INDEX么？
+                        startEdge[iVert] = edgeCount;
+
+                        edgeCount++; 
+                    }
+                } // for vertOffset
+            } // for Poly
+
+            for(int iPoly = 0; iPoly < polyCount; ++iPoly)
+            {
+                int pPoly = iPoly * mesh.maxVertsPerPoly() * 2;
+                for(int vertOffset = 0; vertOffset < mesh.maxVertsPerPoly(); ++vertOffset)
+                {
+                    int iVert = mesh.polys[pPoly + vertOffset];  
+                    if( PolyMeshField.NULL_INDEX == iVert )
+                    {
+                        break; 
+                    }
+
+                    int iNextVert; 
+                    if( vertOffset + 1 >= mesh.maxVertsPerPoly() 
+                        || mesh.polys[pPoly+vertOffset] == PolyMeshField.NULL_INDEX)
+                    {
+                        iNextVert = mesh.polys[pPoly]; 
+                    }
+                    else
+                    {
+                        iNextVert = mesh.polys[pPoly + vertOffset];
+                    }
+
+                    //这里是反向查找共享边的信息
+                    if( iVert > iNextVert )
+                    {
+                        for(int edgeIndex = startEdge[iNextVert]; edgeIndex != PolyMeshField.NULL_INDEX; edgeIndex = nextEdge[edgeIndex])
+                        {
+                            if( iVert == edges[edgeIndex*6+1] )
+                            {
+                                edges[edgeIndex * 6 + 4] = iPoly;
+                                edges[edgeIndex * 6 + 5] = vertOffset;
+                                break; 
+                            }
+                        } // for 
+                    }  //if ivert > iNextVert 
+
+                } // for vertOffset 
+            } // for Poly
+
+            for(int pEdge = 0; pEdge < edgeCount; pEdge+=6 )
+            {
+                //是否共享边 ？
+                if( edges[pEdge+4] != PolyMeshField.NULL_INDEX )
+                {
+                    int pPolyA = edges[pEdge + 2] * mesh.maxVertsPerPoly() * 2;
+                    int pPolyB = edges[pEdge + 4] * mesh.maxVertsPerPoly() * 2;
+                    //参考 poly和edges数组的定义。描述的就是polyA的哪些边与哪个poly共享
+                    mesh.polys[pPolyA + mesh.maxVertsPerPoly() + edges[pEdge + 3]] = edges[pEdge + 4];
+                    mesh.polys[pPolyB + mesh.maxVertsPerPoly() + edges[pEdge + 5]] = edges[pEdge + 2]; 
+                }
+            }
+
+
+        }// func
 
         private static void getPolyMergeInfo(int polyAPointer,int polyBPointer,
             int[] polys,int[] verts ,
