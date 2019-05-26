@@ -51,7 +51,7 @@ namespace NMGen
                 return null; 
             }
 
-            int[] globalVerts = new int[sourceVertCount * 3];  //存的是索引
+            int[] globalVerts = new int[sourceVertCount * 3];  //存的是索引，存的是整个轮廓的
             int globalVertCount = 0;
 
             int[] globalPolys = new int[maxPossiblePolygons * mMaxVertsPerPoly];  //存的也是索引
