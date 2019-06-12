@@ -158,6 +158,7 @@ namespace NMGen
             List<int> polyTriangles = new List<int>(maxVertsPerPoly * 2 * 3);
 
             float[] polyTriangleVerts = new float[MAX_VERTS * 3];
+            int polyTriangleVertCount = 0;  
 
             HeightPatch hfPatch = new HeightPatch(); 
             if( mContourSampleDistance > 0 )
@@ -207,22 +208,59 @@ namespace NMGen
                     hfPatch.width = polyXZBounds[iPoly * 4 + 1] - polyXZBounds[iPoly * 4 + 0];
                     hfPatch.depth = polyXZBounds[iPoly * 4 + 3] - polyXZBounds[iPoly * 4 + 2];
 
-                    loadHeightPatch(); 
+                    loadHeightPatch(pPoly,polyVertCount,sourcePolys,sourceVerts,heightField,hfPatch,workingStack,workingSpanStack,ref workingWidthDepth); 
 
                 } // if mContourSampleDistance
+
+                polyTriangleVertCount = buildPolyDetail(poly, polyVertCount,
+                    heightField, hfPatch,
+                    polyTriangleVerts, polyTriangles,
+                    workingEdges, workingSamples); 
 
             } // all Polygons 
 
         } //build 
 
+        private int buildPolyDetail(float[] sourcePoly,int sourceVertCount,
+            OpenHeightfield heightField,HeightPatch patch,float[] outVerts,
+            List<int> outTriangles,List<int> workingEdges,List<int> workingSamples
+            )
+        {
+            float[] workingVerts = new float[(MAX_EDGES + 1) * 3];
+            int[] workingIndices = new int[MAX_EDGES];
+            int workingIndicesCount = 0;
+            int[] hullIndices = new int[MAX_VERTS];
+            int hullIndicesCount = 0;
+
+            float cellSize = heightField.cellSize();
+            float inverseCellSize = 1.0f / heightField.cellSize();
+
+            Array.Copy(sourcePoly, 0, outVerts, 0, sourceVertCount * 3);
+            int outVertCount = sourceVertCount;
+
+            float heightPathLimit = HeightPatch.UNSET * heightField.cellHeight(); 
+            if( mContourSampleDistance > 0 )
+            {
+                for(int iSourceVertB = 0 , iSourceVertA = sourceVertCount -1; 
+                    iSourceVertB < sourceVertCount;
+                    iSourceVertA = iSourceVertB++)
+                {
+                    int pSourceVertA = iSourceVertA * 3;
+                    int pSourceVertB = iSourceVertB * 3;
+                    bool swapped = false;  
+                }
+            } // if mContourSampleDistance
+
+        }
+
         private static void loadHeightPatch(int polyPointer,int vertCount,int[] indices,int[] verts,
             OpenHeightfield heightField,
-            HeightPatch inoutPath,
+            HeightPatch inoutPatch,
             Stack<int> gridIndexStack,
             Stack<OpenHeightSpan> spanStack,
-            int[] widthDepth)
+            ref int[] widthDepth)
         {
-            inoutPath.resetData();
+            inoutPatch.resetData();
             gridIndexStack.Clear();
             spanStack.Clear(); 
 
@@ -235,10 +273,129 @@ namespace NMGen
                 int vertY = verts[baseIdx + 1];
                 int vertZ = verts[baseIdx + 2];
 
-                OpenHeightSpan selectedSpan = getBestSpan(vertX, vertY, vertZ, heightField, widthDepth);  
+                OpenHeightSpan selectedSpan = getBestSpan(vertX, vertY, vertZ, heightField,ref widthDepth);  
+                if( selectedSpan != null )
+                {
+                    gridIndexStack.Push(widthDepth[0]);
+                    gridIndexStack.Push(widthDepth[1]);
+                    spanStack.Push(selectedSpan); 
+                }
 
             } // for vertCount
+
+            while( spanStack.Count > 0  )
+            {
+                int depthIndex = gridIndexStack.Pop();
+                int widthIndex = gridIndexStack.Pop();
+                OpenHeightSpan span = spanStack.Pop(); 
+
+                if( inoutPatch.getData(widthIndex,depthIndex) != HeightPatch.UNSET )
+                {
+                    continue; 
+                }
+
+                if( inoutPatch.isInPatch(widthIndex,depthIndex) )
+                {
+                    inoutPatch.setData(widthIndex, depthIndex, span.floor()); 
+                } // isInPatch
+
+                for(int dir = 0; dir < 4; ++dir)
+                {
+                    OpenHeightSpan nSpan = span.getNeighbor(dir); 
+                    if( null == nSpan )
+                    {
+                        continue; 
+                    }
+
+                    int nWidthIndex = widthIndex + BoundeField.getDirOffsetWidth(dir);
+                    int nDepthIndex = depthIndex + BoundeField.getDirOffsetDepth(dir); 
+
+                    if( !inoutPatch.isInPatch(nWidthIndex,nDepthIndex) )
+                    {
+                        continue; 
+                    }
+
+                    if( inoutPatch.getData(nWidthIndex,nDepthIndex) != HeightPatch.UNSET )
+                    {
+                        continue; 
+                    }
+
+                    gridIndexStack.Push(nWidthIndex);
+                    gridIndexStack.Push(nDepthIndex);
+                    spanStack.Push(nSpan); 
+                } // for dir
+
+            }  //while spanStack 
+
+        } // load
+
+
+        private static OpenHeightSpan getBestSpan(int vertX ,int vertY,int vertZ,
+            OpenHeightfield heightField ,
+            ref int[] outWidthDepth)
+        {
+            int[] targetOffset = { 0, 0, -1, 0, 0, -1, -1, -1, 1, -1, -1, 1, 1, 0, 1, 1, 0, 1 };
+            OpenHeightSpan resultSpan = null;
+            int minDistance = int.MaxValue; 
+
+            //why 17？因为总共8对
+            for(int p = 0; p < 17; p +=2  )
+            {
+                int widthIndex = vertX + targetOffset[p];
+                int depthIndex = vertZ + targetOffset[p + 1]; 
+
+                if( !heightField.isInBounds(widthIndex,depthIndex) )
+                {
+                    continue; 
+                }
+
+                OpenHeightSpan span = heightField.getData(widthIndex, depthIndex);
+                span = getBestSpan(span, vertY); 
+                if( null == span )
+                {
+                    continue; 
+                }
+                else
+                {
+                    int distance = Math.Abs(vertY - span.floor()); 
+                    if( p == 0   //p 等于0 就是自己，没有Offset
+                        && (distance <= heightField.cellHeight() ))
+                    {
+                        outWidthDepth[0] = widthIndex;
+                        outWidthDepth[1] = depthIndex;
+                        return span; 
+                    }
+                    else if( distance < minDistance )
+                    {
+                        resultSpan = span;
+                        outWidthDepth[0] = widthIndex;
+                        outWidthDepth[1] = depthIndex;
+                        minDistance = distance; 
+                    }
+                }
+            } // for
+
+            return resultSpan;  
+        }  // getBestSpan
+
+
+        private static OpenHeightSpan getBestSpan(OpenHeightSpan baseSpan ,int targetHeight)
+        {
+            int minDistance = int.MaxValue;
+            OpenHeightSpan result = null; 
+
+            for(OpenHeightSpan span = baseSpan; span != null; span = span.next() )
+            {
+                int distance = Math.Abs(targetHeight - span.floor()); 
+                if( distance < minDistance )
+                {
+                    result = span;
+                    minDistance = distance; 
+                }
+            }
+            return result;  
         }
+
 
     } // builder
 }// namespace
