@@ -248,9 +248,93 @@ namespace NMGen
                     int pSourceVertA = iSourceVertA * 3;
                     int pSourceVertB = iSourceVertB * 3;
                     bool swapped = false;  
-                }
+
+                    //TODO 不明白为啥要搞这个？保护顶点的处理顺序一致？
+                    //两个点的x坐标非常相近？
+                    if( Math.Abs(sourcePoly[pSourceVertA] - sourcePoly[pSourceVertB]) < float.MinValue )  
+                    {
+                        //A的Z坐标稍微大点？
+                        if( sourcePoly[pSourceVertA+2] > sourcePoly[pSourceVertB+2] )
+                        {
+                            pSourceVertA = iSourceVertB * 3;
+                            pSourceVertB = iSourceVertA * 3;
+                            swapped = true; 
+                        }
+                    }
+                    else if( sourcePoly[pSourceVertA] > sourcePoly[pSourceVertB] )
+                    {
+                        pSourceVertA = iSourceVertB * 3;
+                        pSourceVertB = iSourceVertA * 3;
+                        swapped = true; 
+                    }
+
+                    float deltaX = sourcePoly[pSourceVertB] - sourcePoly[pSourceVertA];
+                    float deltaZ = sourcePoly[pSourceVertB + 2] - sourcePoly[pSourceVertA + 2];
+                    float edgeXZLength = (float)Math.Sqrt(deltaX * deltaX + deltaZ * deltaZ);
+
+                    int iMaxEdge = 1 + (int)Math.Floor(edgeXZLength / mContourSampleDistance);
+                    iMaxEdge = Math.Min(iMaxEdge, MAX_EDGES);
+                    if( iMaxEdge + outVertCount >= MAX_VERTS)
+                    {
+                        iMaxEdge = MAX_VERTS - 1 - outVertCount;  
+                    }
+
+                    for(int iEdgeVert = 0; iEdgeVert <= iMaxEdge; ++iEdgeVert)
+                    {
+                        float percentOffset = (float)iEdgeVert / iMaxEdge;
+                        int pEdge = iEdgeVert * 3;
+                        workingVerts[pEdge] = sourcePoly[pSourceVertA] + (deltaX * percentOffset);
+                        workingVerts[pEdge + 2] = sourcePoly[pSourceVertA + 2] + (deltaZ * percentOffset);
+
+                        workingVerts[pEdge + 1] = getHeightWithinField(workingVerts[pEdge], workingVerts[pEdge + 2], cellSize, inverseCellSize, patch) * heightField.cellHeight(); 
+                        
+                    } // for iMaxEdge
+
+                }  //for SourceVertCount
             } // if mContourSampleDistance
 
+        }
+
+        private static int getHeightWithinField(float x ,float z ,float cellSize,float inverseCellSize,HeightPatch patch)
+        {
+            int widthIndex = (int)Math.Floor(x * inverseCellSize + 0.01f);
+            int depthIndex = (int)Math.Floor(z * inverseCellSize + 0.01f);
+
+            int height = patch.getData(widthIndex, depthIndex);  
+            if( height == HeightPatch.UNSET )
+            {
+                int[] neighborOffset = { -1, 0, -1, -1, 0, -1, 1, -1, 1, 0, 1, 1, 0, 1, -1, 1 };
+                float minNeighborDistanceSq = float.MaxValue; 
+                for(int p = 0; p < 16; p +=2)
+                {
+                    int nWidthIndex = widthIndex + neighborOffset[p];
+                    int nDepthIndex = depthIndex + neighborOffset[p + 1]; 
+
+                    if( !patch.isInPatch(nWidthIndex,nDepthIndex)) 
+                    {
+                        continue; 
+                    }
+
+                    int nNeighborHeight = patch.getData(nWidthIndex, nDepthIndex); 
+                    if( HeightPatch.UNSET == nNeighborHeight)
+                    {
+                        continue; 
+                    }
+
+                    //0.5是为了取整
+                    float deltaWidth = (nWidthIndex + 0.5f) * cellSize - x;
+                    float deltaDepth = (nDepthIndex + 0.5f) * cellSize - z;
+                    float neighborDistanceSq = deltaWidth * deltaWidth + deltaDepth * deltaDepth; 
+                    if( neighborDistanceSq < minNeighborDistanceSq )
+                    {
+                        height = nNeighborHeight;
+                        minNeighborDistanceSq = neighborDistanceSq; 
+                    }
+                    
+                } // for neighbor
+            } // if no height
+
+            return height; 
         }
 
         private static void loadHeightPatch(int polyPointer,int vertCount,int[] indices,int[] verts,
