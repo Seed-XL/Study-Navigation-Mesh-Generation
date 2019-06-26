@@ -8,7 +8,45 @@ namespace NMGen
     public static class Geometry
     {
 
+        public static float getPointSegmentDistanceSq(float px,float py,float pz,
+            float ax,float ay,float az,
+            float bx,float by,float bz)
+        {
+            float deltaABx = bx - ax;
+            float deltaABy = by - ay;
+            float deltaABz = bz - az;
 
+            float deltaAPx = px - ax;
+            float deltaAPy = py - ay;
+            float deltaAPz = pz - az;
+
+            float segmentABDistSq = deltaABx * deltaABx
+                + deltaABy * deltaABy
+                + deltaABz * deltaABz;  
+
+            if( segmentABDistSq == 0 )
+            {
+                return deltaAPx * deltaAPx
+                    + deltaAPy * deltaAPy
+                    + deltaAPz * deltaAPz; 
+            }
+
+            float u = (deltaABx * deltaAPx  + deltaABy * deltaAPy + deltaABz * deltaAPz) / segmentABDistSq ;
+            if( u < 0 )
+            {
+                return deltaAPx * deltaAPx + deltaAPy * deltaAPy + deltaAPz * deltaAPz; 
+            }
+            else if( u > 1 )
+            {
+                return (px - bx) * (px - bx) + (py - by) * (py - by) + (pz - bz) * (pz - bz); 
+            }
+
+            float deltaX = (ax + u * deltaABx) - px;
+            float deltaY = (ay + u * deltaABy) - py;
+            float deltaZ = (az + u * deltaABz) - pz;
+
+            return deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;  
+        }
 
         /// <summary>
         /// 

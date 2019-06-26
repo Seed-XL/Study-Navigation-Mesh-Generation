@@ -96,7 +96,7 @@ namespace NMGen
             int[] sourceVerts = sourceMesh.verts;
             int[] sourcePolys = sourceMesh.polys;
 
-            //(xmin,xmax,zmin,zmax)
+            //(xmin,xmax,zmin,zmax)，记录每个多边形的Bounds
             int[] polyXZBounds = new int[sourcePolyCount * 4];
             int totalPolyVertCount = 0;
 
@@ -119,6 +119,7 @@ namespace NMGen
                 polyXZBounds[pzmax] = 0 ;
 
 
+                //开始遍历多边形里面的顶点，找出Bounds
                 for(int vertOffset = 0; vertOffset < maxVertsPerPoly; ++vertOffset)
                 {
                     if( PolyMeshField.NULL_INDEX == sourcePolys[pPoly+vertOffset] )
@@ -135,6 +136,7 @@ namespace NMGen
                     totalPolyVertCount++; 
                 } // for maxVertsPerPoly 
 
+                //clamp
                 polyXZBounds[pxmin] = Math.Max(0, polyXZBounds[pxmin] - 1);
                 polyXZBounds[pxmax] = Math.Min(heightField.width(),polyXZBounds[pxmax] + 1) ;
                 polyXZBounds[pzmin] = Math.Max(0, polyXZBounds[pzmin] - 1);
@@ -146,6 +148,7 @@ namespace NMGen
                     continue; 
                 }
 
+                //获取高度Patch最大的长宽
                 maxPolyWidth = Math.Max(maxPolyWidth, polyXZBounds[pxmax] - polyXZBounds[pxmin]);
                 maxPolyDepth = Math.Max(maxPolyDepth, polyXZBounds[pzmax] - polyXZBounds[pzmin]); 
 
@@ -189,6 +192,7 @@ namespace NMGen
                         break; 
                     }
 
+                    //以xyz为一组数据
                     int pVert = sourcePolys[pPoly + vertOffset] * 3;
 
                     //查看生成轮廓那部分的代码，特别是生成Raw轮廓那里，就知道里面的顶点x z 方向的顶点索引，都是按照
@@ -196,13 +200,14 @@ namespace NMGen
                     //cellSize来还原，这里面的位置都是相对的。
                     poly[vertOffset * 3 + 0] = sourceVerts[pVert] * cellSize;
                     poly[vertOffset * 3 + 1] = sourceVerts[pVert + 1] * cellHeight;  
-                    poly[vertOffset * 3 + 2] = sourceVerts[pVert+2] * cellSize;
+                    poly[vertOffset * 3 + 2] = sourceVerts[pVert + 2] * cellSize;
 
                     polyVertCount++; 
                 } // for maxVertsPerPoly
 
                 if( mContourSampleDistance > 0 )
                 {
+                    //这里数据都对于当前的Poly来说的
                     hfPatch.minWidthIndex = polyXZBounds[iPoly * 4];
                     hfPatch.minDepthIndex = polyXZBounds[iPoly * 4 + 2];
                     hfPatch.width = polyXZBounds[iPoly * 4 + 1] - polyXZBounds[iPoly * 4 + 0];
@@ -218,6 +223,8 @@ namespace NMGen
                     workingEdges, workingSamples); 
 
             } // all Polygons 
+
+            return null; 
 
         } //build 
 
@@ -241,6 +248,7 @@ namespace NMGen
             float heightPathLimit = HeightPatch.UNSET * heightField.cellHeight(); 
             if( mContourSampleDistance > 0 )
             {
+                //因为都是A -> B 来分割的，所以当B等于0的时候，A就是绕回去的 sourceVertCount - 1 
                 for(int iSourceVertB = 0 , iSourceVertA = sourceVertCount -1; 
                     iSourceVertB < sourceVertCount;
                     iSourceVertA = iSourceVertB++)
@@ -249,6 +257,7 @@ namespace NMGen
                     int pSourceVertB = iSourceVertB * 3;
                     bool swapped = false;  
 
+                    //字典序,先对比 x的，再对比z ，反正就是坐标较小那个为先
                     //TODO 不明白为啥要搞这个？保护顶点的处理顺序一致？
                     //两个点的x坐标非常相近？
                     if( Math.Abs(sourcePoly[pSourceVertA] - sourcePoly[pSourceVertB]) < float.MinValue )  
@@ -268,10 +277,14 @@ namespace NMGen
                         swapped = true; 
                     }
 
+                    //deltaX只会大于等于0，因为前面的顺序保证了这一点
                     float deltaX = sourcePoly[pSourceVertB] - sourcePoly[pSourceVertA];
+                    //deltaZ可能会有负的，当deltaX等于0的时候，deltaZ就一定大于等于0
                     float deltaZ = sourcePoly[pSourceVertB + 2] - sourcePoly[pSourceVertA + 2];
+
                     float edgeXZLength = (float)Math.Sqrt(deltaX * deltaX + deltaZ * deltaZ);
 
+                    //可以分成多少份来采样
                     int iMaxEdge = 1 + (int)Math.Floor(edgeXZLength / mContourSampleDistance);
                     iMaxEdge = Math.Min(iMaxEdge, MAX_EDGES);
                     if( iMaxEdge + outVertCount >= MAX_VERTS)
@@ -279,6 +292,7 @@ namespace NMGen
                         iMaxEdge = MAX_VERTS - 1 - outVertCount;  
                     }
 
+                    //这条边是从 A->B 的
                     for(int iEdgeVert = 0; iEdgeVert <= iMaxEdge; ++iEdgeVert)
                     {
                         float percentOffset = (float)iEdgeVert / iMaxEdge;
@@ -290,9 +304,73 @@ namespace NMGen
                         
                     } // for iMaxEdge
 
-                }  //for SourceVertCount
+                    workingIndices[0] = 0;
+                    //就是和生成SimpleContour同一套路的，一个开始点，一个终点，不断地插入点
+                    //???为什么定义的是最后一个顶点呢？
+                    workingIndices[1] = iMaxEdge; 
+                    workingIndicesCount = 2; 
+
+                    for(int iWorkingIndex = 0; iWorkingIndex < workingIndicesCount - 1; )
+                    {
+                        int iWorkingVertA = workingIndices[iWorkingIndex];
+                        int iWorkingVertB = workingIndices[iWorkingIndex + 1];
+                        int pWorkingVertA = iWorkingVertA * 3;
+                        int pWorkingVertB = iWorkingVertB * 3;
+
+                        float maxDistanceSq = 0;
+                        int iMaxDistanceVert = -1;
+                        for(int iTestVert = iWorkingVertA + 1; iTestVert < iWorkingVertB; iTestVert++)
+                        {
+                            int iTestVertBase = iTestVert * 3; 
+                            if( workingVerts[iTestVertBase+1] >= heightPathLimit )  //异常的高度
+                            {
+                                Logger.LogWarning("[DetailMeshBuilder][buildPolyDetail]Potential Loss Height|{0}|{1}",workingVerts[iTestVertBase],workingVerts[iTestVertBase+2]);
+                                continue; 
+                            } // heightPathLimit
+
+                            float distanceSq = Geometry.getPointSegmentDistanceSq(
+                                workingVerts[iTestVertBase],
+                                workingVerts[iTestVertBase+1],
+                                workingVerts[iTestVertBase+2],
+                                workingVerts[pWorkingVertA],
+                                workingVerts[pWorkingVertA+1],
+                                workingVerts[pWorkingVertA+2],
+                                workingVerts[pWorkingVertB],
+                                workingVerts[pWorkingVertB+1],
+                                workingVerts[pWorkingVertB+2]
+                                ); 
+
+                            if( distanceSq > maxDistanceSq )
+                            {
+                                maxDistanceSq = distanceSq;
+                                iMaxDistanceVert = iTestVert;  
+                            }
+                        }  //for  iWorkingVertB 
+
+                        if( iMaxDistanceVert != -1
+                            && maxDistanceSq > mContourMaxDeviation * mContourMaxDeviation )
+                        {
+                            //找到iWorkingIndex后面
+                            for(int i = workingIndicesCount; i > iWorkingIndex; --i)
+                            {
+                                workingIndices[i] = workingIndices[i - 1];
+                            }
+
+                            workingIndices[iWorkingIndex + 1] = iMaxDistanceVert;
+                            workingIndicesCount++; 
+                        } // if maxDistanceSq
+                        else
+                        {
+                            iWorkingIndex++; 
+                        }
+
+                    }  // for workingIndicesCount
+
+                }  //for SourceVertCount , 遍历边
             } // if mContourSampleDistance
 
+
+            return 0; 
         }
 
         private static int getHeightWithinField(float x ,float z ,float cellSize,float inverseCellSize,HeightPatch patch)
@@ -303,6 +381,7 @@ namespace NMGen
             int height = patch.getData(widthIndex, depthIndex);  
             if( height == HeightPatch.UNSET )
             {
+                //使用8邻居来找该端点对应的高度
                 int[] neighborOffset = { -1, 0, -1, -1, 0, -1, 1, -1, 1, 0, 1, 1, 0, 1, -1, 1 };
                 float minNeighborDistanceSq = float.MaxValue; 
                 for(int p = 0; p < 16; p +=2)
@@ -322,8 +401,10 @@ namespace NMGen
                     }
 
                     //0.5是为了取整
+                    //因为 nWidthIndex和nDepthIndex都已经偏移了原来的x/z了，所以选一个最近距离的作为高度
                     float deltaWidth = (nWidthIndex + 0.5f) * cellSize - x;
                     float deltaDepth = (nDepthIndex + 0.5f) * cellSize - z;
+
                     float neighborDistanceSq = deltaWidth * deltaWidth + deltaDepth * deltaDepth; 
                     if( neighborDistanceSq < minNeighborDistanceSq )
                     {
@@ -383,6 +464,7 @@ namespace NMGen
                     inoutPatch.setData(widthIndex, depthIndex, span.floor()); 
                 } // isInPatch
 
+                //四个方向广度优先一下，也存一下它们的高度
                 for(int dir = 0; dir < 4; ++dir)
                 {
                     OpenHeightSpan nSpan = span.getNeighbor(dir); 
