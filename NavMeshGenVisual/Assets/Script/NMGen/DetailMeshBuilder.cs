@@ -233,7 +233,9 @@ namespace NMGen
             List<int> outTriangles,List<int> workingEdges,List<int> workingSamples
             )
         {
+            //分段的，真正的顶点坐标
             float[] workingVerts = new float[(MAX_EDGES + 1) * 3];
+            //分段顶点对应的顶点索引
             int[] workingIndices = new int[MAX_EDGES];
             int workingIndicesCount = 0;
             int[] hullIndices = new int[MAX_VERTS];
@@ -312,6 +314,7 @@ namespace NMGen
 
                     for(int iWorkingIndex = 0; iWorkingIndex < workingIndicesCount - 1; )
                     {
+                        //iWorkingVertA和iWorkingVertB对应的都是分段顶点的顶点索引
                         int iWorkingVertA = workingIndices[iWorkingIndex];
                         int iWorkingVertB = workingIndices[iWorkingIndex + 1];
                         int pWorkingVertA = iWorkingVertA * 3;
@@ -321,13 +324,15 @@ namespace NMGen
                         int iMaxDistanceVert = -1;
                         for(int iTestVert = iWorkingVertA + 1; iTestVert < iWorkingVertB; iTestVert++)
                         {
-                            int iTestVertBase = iTestVert * 3; 
-                            if( workingVerts[iTestVertBase+1] >= heightPathLimit )  //异常的高度
+                            int iTestVertBase = iTestVert * 3;
+                            //iTestVertBase + 1 对应的是y坐标
+                            if ( workingVerts[iTestVertBase+1] >= heightPathLimit )  //异常的高度
                             {
                                 Logger.LogWarning("[DetailMeshBuilder][buildPolyDetail]Potential Loss Height|{0}|{1}",workingVerts[iTestVertBase],workingVerts[iTestVertBase+2]);
                                 continue; 
                             } // heightPathLimit
 
+                            //注意，和生成轮廓那里不一样的是，这里算的是三维的距离，算上高度的
                             float distanceSq = Geometry.getPointSegmentDistanceSq(
                                 workingVerts[iTestVertBase],
                                 workingVerts[iTestVertBase+1],
@@ -350,7 +355,7 @@ namespace NMGen
                         if( iMaxDistanceVert != -1
                             && maxDistanceSq > mContourMaxDeviation * mContourMaxDeviation )
                         {
-                            //找到iWorkingIndex后面
+                            //插到iWorkingIndex后面
                             for(int i = workingIndicesCount; i > iWorkingIndex; --i)
                             {
                                 workingIndices[i] = workingIndices[i - 1];
@@ -366,11 +371,61 @@ namespace NMGen
 
                     }  // for workingIndicesCount
 
+                    hullIndices[hullIndicesCount++] = iSourceVertA; 
+                    if( swapped )
+                    {
+                        //TODO 为什么要反过来插入，而且为什么是要减2呢 ？
+                        for(int iWorkingIndex = workingIndicesCount - 2; iWorkingIndex > 0; iWorkingIndex--)
+                        {
+                            int outVertCountBase = outVertCount * 3; 
+                            outVerts[outVertCountBase] = workingVerts[workingIndices[iWorkingIndex] * 3];
+                            outVerts[outVertCountBase+1] = workingVerts[workingIndices[iWorkingIndex] * 3 + 1];
+                            outVerts[outVertCountBase+2] = workingVerts[workingIndices[iWorkingIndex] * 3 + 2];
+                            hullIndices[hullIndicesCount++] = outVertCount;  //？？？ 为什么是存的个数，其实是个索引?
+                            outVertCount++; 
+                        } // for iWorkingIndex
+                    }  // if swapped
+                    else
+                    {
+                        for(int iWorkingIndex = 1; iWorkingIndex < workingIndicesCount-1; ++iWorkingIndex)
+                        {
+                            int outVertCountBase = outVertCount * 3;
+                            outVerts[outVertCountBase] = workingVerts[workingIndices[iWorkingIndex] * 3];
+                            outVerts[outVertCountBase + 1] = workingVerts[workingIndices[iWorkingIndex] * 3 + 1];
+                            outVerts[outVertCountBase + 2] = workingVerts[workingIndices[iWorkingIndex] * 3 + 2];
+                            hullIndices[hullIndicesCount++] = outVertCount;
+                            outVertCount++; 
+                        }
+                    } // if swapped
+
                 }  //for SourceVertCount , 遍历边
             } // if mContourSampleDistance
+            else
+            {
+                for(int i = 0; i < outVertCount; ++i)
+                {
+                    hullIndices[i] = i; 
+                }
+                hullIndicesCount = outVertCount;  
+            } // if - else mContourSampleDistance
 
+            if( outVertCount > 3 )
+            {
+                performDelaunayTriangulation(
+                    outVerts,outVertCount,
+                    hullIndices,hullIndicesCount,
+                    workingEdges,outTriangles); 
+            }  //if outVertCount > 3 
 
             return 0; 
+        }
+
+        //TODO
+        private static void performDelaunayTriangulation(float[] verts,int vertCount,
+            int[] immutableHull,int hullEdgeCount,
+            List<int> workingEdges,List<int> outTriangles)
+        {
+
         }
 
         private static int getHeightWithinField(float x ,float z ,float cellSize,float inverseCellSize,HeightPatch patch)
