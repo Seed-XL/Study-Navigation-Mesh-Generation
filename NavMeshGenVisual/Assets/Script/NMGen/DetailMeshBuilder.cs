@@ -295,6 +295,7 @@ namespace NMGen
                     }
 
                     //这条边是从 A->B 的
+                    //将A->B 分割成几份
                     for(int iEdgeVert = 0; iEdgeVert <= iMaxEdge; ++iEdgeVert)
                     {
                         float percentOffset = (float)iEdgeVert / iMaxEdge;
@@ -306,12 +307,12 @@ namespace NMGen
                         
                     } // for iMaxEdge
 
-                    workingIndices[0] = 0;
                     //就是和生成SimpleContour同一套路的，一个开始点，一个终点，不断地插入点
-                    //???为什么定义的是最后一个顶点呢？
+                    workingIndices[0] = 0;
                     workingIndices[1] = iMaxEdge; 
                     workingIndicesCount = 2; 
 
+                    //然后 A->B 这条边，还可以更加细分出来吗？
                     for(int iWorkingIndex = 0; iWorkingIndex < workingIndicesCount - 1; )
                     {
                         //iWorkingVertA和iWorkingVertB对应的都是分段顶点的顶点索引
@@ -322,6 +323,8 @@ namespace NMGen
 
                         float maxDistanceSq = 0;
                         int iMaxDistanceVert = -1;
+
+                        //遍历采样点
                         for(int iTestVert = iWorkingVertA + 1; iTestVert < iWorkingVertB; iTestVert++)
                         {
                             int iTestVertBase = iTestVert * 3;
@@ -333,6 +336,7 @@ namespace NMGen
                             } // heightPathLimit
 
                             //注意，和生成轮廓那里不一样的是，这里算的是三维的距离，算上高度的
+                            //所以这里其实是找出高度偏离得特别厉害的采样点，这样的点，就需要插入到新的边
                             float distanceSq = Geometry.getPointSegmentDistanceSq(
                                 workingVerts[iTestVertBase],
                                 workingVerts[iTestVertBase+1],
@@ -368,20 +372,26 @@ namespace NMGen
                         {
                             iWorkingIndex++; 
                         }
-
                     }  // for workingIndicesCount
 
+                    //多边形外壳的索引,iSourceVertA的索引是相对于outVerts和sourcePoly来说的
                     hullIndices[hullIndicesCount++] = iSourceVertA; 
                     if( swapped )
                     {
+                        //因为先加了A？
                         //TODO 为什么要反过来插入，而且为什么是要减2呢 ？
                         for(int iWorkingIndex = workingIndicesCount - 2; iWorkingIndex > 0; iWorkingIndex--)
                         {
+                            //outVertCount原来的值是sourceVertCount
                             int outVertCountBase = outVertCount * 3; 
+                            
+                            //outVerts本来就原本的顶点数据了，在前面的ArrayCopy。
+                            //但是这里为什么要直接插在后面呢？因为后面是使用hullIndices数组来索引的，所以顺序没有关系了。
+                            // hullIndices里面存的是相对于outVerts顶点数组中的索引
                             outVerts[outVertCountBase] = workingVerts[workingIndices[iWorkingIndex] * 3];
                             outVerts[outVertCountBase+1] = workingVerts[workingIndices[iWorkingIndex] * 3 + 1];
                             outVerts[outVertCountBase+2] = workingVerts[workingIndices[iWorkingIndex] * 3 + 2];
-                            hullIndices[hullIndicesCount++] = outVertCount;  //？？？ 为什么是存的个数，其实是个索引?
+                            hullIndices[hullIndicesCount++] = outVertCount;  //outVertCount其实指向的是索引
                             outVertCount++; 
                         } // for iWorkingIndex
                     }  // if swapped
@@ -402,6 +412,7 @@ namespace NMGen
             } // if mContourSampleDistance
             else
             {
+                //如果不用细分边界的话，那就外壳的索引数组，就是对应outVerts数组的
                 for(int i = 0; i < outVertCount; ++i)
                 {
                     hullIndices[i] = i; 
@@ -420,12 +431,78 @@ namespace NMGen
             return 0; 
         }
 
-        //TODO
+
+        private static int completeTriangle(int iEdge,
+            float[] verts , int vertCount,
+            int currentTriangleCount , List<int> edges )
+        {
+            int iVertA;
+            int iVertB; 
+            
+            if( edges[iEdge * 4 + 2] == UNDEFINED )
+            {
+                iVertA = edges[iEdge * 4];
+                iVertB = edges[iEdge * 4 + 1];
+            }
+            else if( edges[iEdge * 4 + 3] == UNDEFINED )
+            {
+                iVertA = edges[iEdge * 4 + 1];
+                iVertB = edges[iEdge * 4];  
+            }
+            else
+            {
+                return currentTriangleCount; 
+            }
+
+            int pVertA = iVertA * 3;
+            int pVertB = iVertB * 3;
+
+            int iSelectedVert = UNDEFINED;  
+        }
+
         private static void performDelaunayTriangulation(float[] verts,int vertCount,
             int[] immutableHull,int hullEdgeCount,
             List<int> workingEdges,List<int> outTriangles)
         {
+            int triangleCount = 0;
+            //(vertA,vertB,valueA,valueB)
+            workingEdges.Clear(); 
 
+            //hullEdgeCount 叫这个名字不太合适吧。。。
+            for(int iHullVertB = 0 , iHullVertA = hullEdgeCount - 1; 
+                iHullVertB < hullEdgeCount;
+                iHullVertA = iHullVertB++ )
+            {
+                workingEdges.Add(immutableHull[iHullVertA]);
+                workingEdges.Add(immutableHull[iHullVertB]);
+
+                workingEdges.Add(HULL);  //默认是顺时针，所以边的左边是壳，也就是外界
+                workingEdges.Add(UNDEFINED);  //边的右边未知
+
+            } // for hullEdgeCount
+
+            int iCurrentEdge = 0; 
+            while( iCurrentEdge * 4 < workingEdges.Count )
+            {
+                if( workingEdges[iCurrentEdge * 4 + 2] == UNDEFINED 
+                    || workingEdges[iCurrentEdge* 4 + 3] == UNDEFINED )
+                {
+                    triangleCount = completeTriangle(iCurrentEdge, verts, vertCount, triangleCount, workingEdges);
+                    iCurrentEdge++; 
+                }
+            } // while iCurrentEdge
+
+            outTriangles.Clear(); 
+            for(int i = 0; i < triangleCount * 3; ++i)
+            {
+                outTriangles.Add(UNDEFINED);
+            }
+
+
+            for(int pEdge = 0; pEdge < workingEdges.Count; pEdge +=4 )
+            {
+
+            } // for workingEdges
         }
 
         private static int getHeightWithinField(float x ,float z ,float cellSize,float inverseCellSize,HeightPatch patch)
