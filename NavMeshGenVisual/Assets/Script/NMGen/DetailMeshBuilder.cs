@@ -432,6 +432,35 @@ namespace NMGen
         }
 
 
+        private static bool overlapsExistingEdge(int iVertA ,int iVertB ,float[] verts,List<int> edges )
+        {
+            for(int pEdge = 0 ; pEdge < edges.Count; pEdge += 4 )
+            {
+                int iEdgeVertA = edges[pEdge];
+                int iEdgeVertB = edges[pEdge + 1]; 
+
+                if( iEdgeVertA == iVertA
+                    || iEdgeVertA == iVertB 
+                    || iEdgeVertB == iVertA
+                    || iEdgeVertB == iVertB )
+                {
+                    continue; 
+                }
+
+                if( Geometry.segmentsOverlap(verts[iEdgeVertA*3],verts[iEdgeVertA*3+2],
+                                    verts[iEdgeVertB*3],verts[iEdgeVertB*3+2],
+                                    verts[iVertA*3],verts[iVertA*3+2],
+                                    verts[iVertB*3],verts[iVertB*3+2])
+                                    )
+                {
+                    return true; 
+                }
+
+            } // for pEdge < edges.Count
+
+            return false;  
+        }
+
         private static int completeTriangle(int iEdge,
             float[] verts , int vertCount,
             int currentTriangleCount , List<int> edges )
@@ -457,7 +486,40 @@ namespace NMGen
             int pVertA = iVertA * 3;
             int pVertB = iVertB * 3;
 
-            int iSelectedVert = UNDEFINED;  
+            int iSelectedVert = UNDEFINED;
+
+            //(x,z,r)
+            float[] selectedCircle = { 0,0,-1};
+            float tolerance = 0.001f;
+            float epsilon = 1e-5f; 
+
+            for(int iPotentialVert = 0; iPotentialVert < vertCount; ++iPotentialVert)
+            {
+                if( iPotentialVert == iVertA 
+                    || iPotentialVert == iVertB )
+                {
+                    continue; 
+                }
+
+                int pPotentialVert = iPotentialVert * 3;
+                float area = Geometry.getSignedAreaX2(verts[pVertA],verts[pVertA+2],
+                    verts[pVertB],verts[pVertB+2],
+                    verts[pPotentialVert],verts[pPotentialVert+2] ); 
+
+                //TODO 不是应该使用绝对值么？
+                if( area > epsilon )
+                {
+                    if( selectedCircle[2] < 0  )
+                    {
+                        if( overlapsExistingEdge(iVertA,iPotentialVert,verts,edges)
+                            || overlapsExistingEdge(iVertB,iPotentialVert,verts,edges) ) 
+                        {
+                            continue; 
+                        }
+                    }  // if selectedCircle[2] < 2
+                } //if area > epsilon 
+
+            } // iPotentialVert
         }
 
         private static void performDelaunayTriangulation(float[] verts,int vertCount,

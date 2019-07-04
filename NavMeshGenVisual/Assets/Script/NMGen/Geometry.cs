@@ -171,5 +171,35 @@ namespace NMGen
         } 
 
 
+        public static float getSignedAreaX2(float ax ,float ay,
+            float bx,float by,
+            float cx,float cy)
+        {
+            return (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);  
+        }
+
+        public static bool segmentsOverlap(float ax,float ay,
+            float bx,float by,
+            float cx,float cy,
+            float dx,float dy)
+        {
+            float deltaABx = bx - ax;
+            float deltaABy = by - ay;
+
+            float deltaCDx = dx - cx;
+            float deltaCDy = dy - cy;
+
+            float deltaCAx = ax - cx;
+            float deltaCAy = ay - cy;
+
+            float numerator = (deltaCAy * deltaCDx) - (deltaCAx * deltaCDy);
+            float denominator = (deltaABx * deltaCDy) - (deltaABy * deltaCDx);
+
+            float tolerance = 0.001f;  
+
+
+                
+        }
+
     }
 }
