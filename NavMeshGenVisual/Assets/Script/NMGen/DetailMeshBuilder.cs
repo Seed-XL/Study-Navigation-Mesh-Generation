@@ -427,6 +427,18 @@ namespace NMGen
                     hullIndices,hullIndicesCount,
                     workingEdges,outTriangles); 
             }  //if outVertCount > 3 
+            else if( 3 == outVertCount )
+            {
+                outTriangles.Clear();
+                outTriangles.Add(0);
+                outTriangles.Add(1);
+                outTriangles.Add(2); 
+            }
+            else
+            {
+                outTriangles.Clear();
+                return 0; 
+            }
 
             return 0; 
         }
@@ -447,6 +459,7 @@ namespace NMGen
                     continue; 
                 }
 
+                //和现在任意的一条边都有可能重叠 
                 if( Geometry.segmentsOverlap(verts[iEdgeVertA*3],verts[iEdgeVertA*3+2],
                                     verts[iEdgeVertB*3],verts[iEdgeVertB*3+2],
                                     verts[iVertA*3],verts[iVertA*3+2],
@@ -461,13 +474,88 @@ namespace NMGen
             return false;  
         }
 
+        /// <summary>
+        /// http://mathworld.wolfram.com/Circumcircle.html
+        /// </summary>
+        /// <param name="ax"></param>
+        /// <param name="ay"></param>
+        /// <param name="bx"></param>
+        /// <param name="by"></param>
+        /// <param name="cx"></param>
+        /// <param name="cb"></param>
+        /// <param name="triangleAreaX2"></param>
+        /// <param name="outCircle"></param>
+        /// <returns></returns>
+        private static bool buildCircumcircle(float ax , float ay ,
+            float bx,float by,
+            float cx,float cy,
+            float triangleAreaX2,float[] outCircle )
+        {
+            float epsilon = 1e-6f; 
+
+            if( Math.Abs(triangleAreaX2) > epsilon )
+            {
+                //Graphic Gems 1 Page 22
+                float aLenSq = ax * ax + ay * ay;
+                float bLenSq = bx * bx + by * by;
+                float cLenSq = cx * cx + cy * cy;
+
+                outCircle[0] = (aLenSq * (by - cy) + bLenSq * (cy - ay) + cLenSq * (ay - by)) / (2 * triangleAreaX2);
+                outCircle[1] = (aLenSq * (cx - bx) + bLenSq * (ax - cx) + cLenSq * (bx - ax)) / (2 * triangleAreaX2);
+
+                outCircle[2] = (float)Math.Sqrt(Geometry.getDistanceSq(outCircle[0], outCircle[1], ax, ay));
+
+                return true; 
+            } //if Math.Abs
+
+            outCircle[0] = 0;
+            outCircle[1] = 0;
+            outCircle[2] = UNDEFINED;
+            return false; 
+        }
+
+        //VertA和VertB的谁先谁后没关系，因为目的是找到半边对应的边，所以只有有一组半边对应上就好了
+        private static int getEdgeIndex( List<int> edges,int vertAIndex,int vertBIndex )
+        {
+            int edgeCount = edges.Count / 4; 
+            for(int i = 0; i < edgeCount; ++i)
+            {
+                int u = edges[i * 4];
+                int v = edges[i * 4 + 1]; 
+                //一组边，当两个半边来存了
+                if( (u == vertAIndex && v == vertBIndex) 
+                    || (u == vertBIndex && v == vertAIndex))
+                {
+                    return i; 
+                }
+            }
+
+            return UNDEFINED;  
+        }
+
+        private static void updateLeftFace(int iEdge,int iStartVert , int faceValue,List<int> edges)
+        {
+            int pEdge = iEdge * 4; 
+            if( edges[pEdge] == iStartVert 
+                && edges[pEdge+2] == UNDEFINED )
+            {
+                edges[pEdge + 2] = faceValue; 
+            }
+            else if( edges[pEdge+1] == iStartVert 
+                && edges[pEdge+3] == UNDEFINED )
+            {
+                edges[pEdge + 3] = faceValue; 
+            }
+        }
+
         private static int completeTriangle(int iEdge,
             float[] verts , int vertCount,
             int currentTriangleCount , List<int> edges )
         {
             int iVertA;
             int iVertB; 
-            
+
+            //这里确保的都是半边的左侧
             if( edges[iEdge * 4 + 2] == UNDEFINED )
             {
                 iVertA = edges[iEdge * 4];
@@ -506,22 +594,120 @@ namespace NMGen
                     verts[pVertB],verts[pVertB+2],
                     verts[pPotentialVert],verts[pPotentialVert+2] ); 
 
-                //TODO 不是应该使用绝对值么？
+                //TODO 不是应该使用绝对值么？因为如果这个有符号的面积大于0，首先可以知道
+                //点是在半边的左侧。如果面积是小于0的话，那边证明点是在半边的右侧，不符合
                 if( area > epsilon )
                 {
+                    //证明还没有算过
                     if( selectedCircle[2] < 0  )
-                    {
+                    { 
                         if( overlapsExistingEdge(iVertA,iPotentialVert,verts,edges)
                             || overlapsExistingEdge(iVertB,iPotentialVert,verts,edges) ) 
                         {
                             continue; 
                         }
-                    }  // if selectedCircle[2] < 2
+
+                        //找到一个点可以组成外接圆
+                        if( buildCircumcircle(verts[pVertA],verts[pVertA+2],
+                            verts[pVertB],verts[pVertB+2],
+                            verts[pPotentialVert],verts[pPotentialVert+2],
+                            area,selectedCircle) )
+                        {
+                            iSelectedVert = iPotentialVert;  
+                        } // if buildCircumcircle 
+
+                        continue;  
+                    }  // if selectedCircle[2] < 0
+
+                    //前面已经算过外接圆了，
+                    float distanceToOrgin = (float)Math.Sqrt( Geometry.getDistanceSq(selectedCircle[0],selectedCircle[1],verts[pPotentialVert],verts[pPotentialVert+2])); 
+                    if( distanceToOrgin > selectedCircle[2] * (1+tolerance) ) 
+                    {
+                        //Delaunay condition：http://www.dma.fi.upm.es/personal/mabellanas/tfcs/flips/Intercambios/html/teoria/teoria_del_ing.htm
+                        //An edge is 'legal' when starting from the edge in question and the two triangles which it belongs to, the circumscribed circumference to one of the triangles does not contain the remaining point that belongs to the other triangle, and vice versa.
+                        //因为这个点在圆外面，所以不用考虑了
+                        continue; 
+                    } // distanceToOrgin
+                    else
+                    {
+                        //为了排除浮点错误，二次排除？
+                        //因为要取最小的外接圆，为了满足，空圆属性
+                        if( overlapsExistingEdge(iVertA,iPotentialVert,verts,edges) 
+                            || overlapsExistingEdge(iVertB,iPotentialVert,verts,edges) )
+                        {
+                            continue; 
+                        }
+
+                        if( buildCircumcircle(verts[pVertA],verts[pVertA+2],
+                            verts[pVertB],verts[pVertB+2],
+                            verts[pPotentialVert],verts[pPotentialVert+2],
+                            area,
+                            selectedCircle) )
+                        {
+                            //一个更小的外接圆
+                            iSelectedVert = iPotentialVert;  
+                        }
+                    }
                 } //if area > epsilon 
 
-            } // iPotentialVert
+            } //  for iPotentialVert
+
+            if( iSelectedVert != UNDEFINED )
+            {
+                //currentTriangleCount是索引
+                updateLeftFace(iEdge, iVertA, currentTriangleCount, edges);
+
+                //TODO：注意selectedVert 和 VertA 、VertB的关系。这里是先从 selectVert -> A -> B -> selectVert的
+                //顶点顺序。但是看这个函数开头的地方，A和B可能是已经换过位置了。所以确保了face Value始终在半边的左侧。
+
+                //selectedVert -> vertA
+                int iSelectedEdge = getEdgeIndex(edges, iSelectedVert, iVertA);  
+                if( iSelectedEdge == UNDEFINED )
+                {
+                    edges.Add(iSelectedVert);
+                    edges.Add(iVertA);
+                    edges.Add(currentTriangleCount);
+                    edges.Add(UNDEFINED); 
+                }
+                else
+                {
+                    updateLeftFace(iSelectedEdge, iSelectedVert, currentTriangleCount, edges); 
+                }
+
+                //vertB -> selectedVert 
+                iSelectedEdge = getEdgeIndex(edges, iVertB, iSelectedVert);  
+                if(iSelectedEdge == UNDEFINED)
+                {
+                    edges.Add(iVertB);
+                    edges.Add(iSelectedVert);
+                    edges.Add(currentTriangleCount);
+                    edges.Add(UNDEFINED);
+                }
+                else
+                {
+                    updateLeftFace(iSelectedEdge, iVertB, currentTriangleCount, edges); 
+                }
+
+                currentTriangleCount++;  
+            } // if iSelectedVert != UNDEFINED 
+            else
+            {
+                updateLeftFace(iEdge, iVertA, HULL, edges); 
+            }
+
+            return currentTriangleCount; 
         }
 
+        /// <summary>
+        /// 默认多边形顶点顺序是顺时针的。
+        /// 这里对边的定义，感觉有点像半边数据，然后判断的都是半边左侧
+        /// </summary>
+        /// <param name="verts"></param>
+        /// <param name="vertCount"></param>
+        /// <param name="immutableHull"></param>
+        /// <param name="hullEdgeCount"></param>
+        /// <param name="workingEdges"></param>
+        /// <param name="outTriangles"></param>
         private static void performDelaunayTriangulation(float[] verts,int vertCount,
             int[] immutableHull,int hullEdgeCount,
             List<int> workingEdges,List<int> outTriangles)
@@ -549,6 +735,7 @@ namespace NMGen
                 if( workingEdges[iCurrentEdge * 4 + 2] == UNDEFINED 
                     || workingEdges[iCurrentEdge* 4 + 3] == UNDEFINED )
                 {
+                    //注意，这里会增加workingEdges的边数
                     triangleCount = completeTriangle(iCurrentEdge, verts, vertCount, triangleCount, workingEdges);
                     iCurrentEdge++; 
                 }
@@ -563,7 +750,61 @@ namespace NMGen
 
             for(int pEdge = 0; pEdge < workingEdges.Count; pEdge +=4 )
             {
+                if( workingEdges[pEdge+3] != HULL )
+                {
+                    //pEdge + 3 取的是 顺时针半边的右值？存的就是三角形的索引
+                    int pTriangle = workingEdges[pEdge + 3] * 3; 
+                    if( outTriangles[pTriangle] == UNDEFINED )  //如果到这里，还有一个未定义的话，就是一种错误 
+                    {
+                        //先给两点，三角形的
+                        outTriangles[pTriangle] = workingEdges[pEdge];
+                        outTriangles[pTriangle + 1] = workingEdges[pEdge + 1]; 
+                    }
+                    else if( outTriangles[pTriangle+2] == UNDEFINED )
+                    {
+                        //这个三角形前两个顶点都确定了
+                        if( workingEdges[pEdge] == outTriangles[pTriangle]
+                            || workingEdges[pEdge] == outTriangles[pTriangle+1])
+                        {
+                            //某条边的第一个顶点在这个三角形里，而且，这个三角形的前两个点都已经确认了。
+                            //所以这条边的第二个顶点，也就是三角形的第三个顶点
+                            outTriangles[pTriangle + 2] = workingEdges[pEdge + 1]; 
+                        }
+                        else
+                        {
+                            outTriangles[pTriangle + 2] = workingEdges[pEdge]; 
+                        } 
 
+                    } // else if  outTriangles[pTriangle+2] == UNDEFINED
+                } // workingEdges[pEdge+3] != HULL
+
+                if( workingEdges[pEdge+2] != HULL  )
+                {
+                    //A->B 这个半边的左侧有关联的三角形，那么 B -> A 才是顺时针的顺序
+
+                    int pTriangle = workingEdges[pEdge + 2] * 3; 
+                    if( outTriangles[pTriangle] == UNDEFINED  )
+                    {
+                        //注意这里， B -> A 才是顺时针
+                        outTriangles[pTriangle] = workingEdges[pEdge + 1];
+                        outTriangles[pTriangle + 1] = workingEdges[pEdge]; 
+                    } // if outTriangles[pTriangle] == UNDEFINED
+                    else if( outTriangles[pTriangle+2] == UNDEFINED )
+                    {
+                        if (workingEdges[pEdge] == outTriangles[pTriangle]
+                        || workingEdges[pEdge] == outTriangles[pTriangle + 1])
+                        {
+                            //操作同上
+                            outTriangles[pTriangle + 2] = workingEdges[pEdge + 1];
+                        } 
+                        else
+                        {
+                            outTriangles[pTriangle + 2] = workingEdges[pEdge]; 
+                        }
+                    } // else if outTriangles[pTriangle+2] == UNDEFINED
+
+
+                } // if workingEdges[pEdge+2] != HULL  
             } // for workingEdges
         }
 
