@@ -105,8 +105,7 @@ namespace NMGen
 
             for(int iPoly = 0; iPoly < sourcePolyCount; ++iPoly)
             {
-                //在SourcePolyMesh里面，每个Poly的是两组maxVertsPoly的数组，一组是自己的顶点，一组和别的
-                //Poly相连的顶点
+                //在SourcePolyMesh里面，每个Poly的是两组maxVertsPoly的数组，一组是自己的顶点，一组和别的Poly相连的顶点
                 int pPoly = iPoly * maxVertsPerPoly * 2;
                 int pxmin = iPoly * 4;
                 int pxmax = iPoly * 4 + 1;
@@ -124,9 +123,11 @@ namespace NMGen
                 {
                     if( PolyMeshField.NULL_INDEX == sourcePolys[pPoly+vertOffset] )
                     {
+                        //找到多边形的顶点结尾了，跳出循环
                         break; 
                     }
 
+                    //获取多边形的顶点索引，再去取真正的顶点
                     int pVert = sourcePolys[pPoly + vertOffset] * 3;
                     polyXZBounds[pxmin] = Math.Min(polyXZBounds[pxmin], sourceVerts[pVert]);
                     polyXZBounds[pxmax] = Math.Max(polyXZBounds[pxmax], sourceVerts[pVert]);
@@ -154,7 +155,7 @@ namespace NMGen
 
             } // for sourcePolyCount
 
-
+            //(x,y,z)为一组，这里存的是真正顶点的值 
             float[] poly = new float[maxVertsPerPoly * 3];
             int polyVertCount = 0;
 
@@ -177,7 +178,10 @@ namespace NMGen
 
             int[] workingWidthDepth = new int[2];
 
+            //每组 (x,y,z)
             List<float> globalVerts = new List<float>(totalPolyVertCount * 2 * 3);
+
+            //(vertAIdx,vertBIdx,vertCIdx，regionID)
             List<int> globalTriangles = new List<int>(totalPolyVertCount * 2 * 4); 
 
             for(int iPoly = 0; iPoly < sourcePolyCount; ++iPoly)
@@ -192,7 +196,7 @@ namespace NMGen
                         break; 
                     }
 
-                    //以xyz为一组数据
+                    //以xyz为一组数据,所以取出来的索引需要 * 3 
                     int pVert = sourcePolys[pPoly + vertOffset] * 3;
 
                     //查看生成轮廓那部分的代码，特别是生成Raw轮廓那里，就知道里面的顶点x z 方向的顶点索引，都是按照
@@ -207,7 +211,7 @@ namespace NMGen
 
                 if( mContourSampleDistance > 0 )
                 {
-                    //这里数据都对于当前的Poly来说的
+                    //这里数据都对于当前的Poly来说的,限制了当前hfPatch的范围
                     hfPatch.minWidthIndex = polyXZBounds[iPoly * 4];
                     hfPatch.minDepthIndex = polyXZBounds[iPoly * 4 + 2];
                     hfPatch.width = polyXZBounds[iPoly * 4 + 1] - polyXZBounds[iPoly * 4 + 0];
@@ -217,6 +221,7 @@ namespace NMGen
 
                 } // if mContourSampleDistance
 
+                //所以多边形的高度数据之后 ，开始做真正的细化处理
                 polyTriangleVertCount = buildPolyDetail(poly, polyVertCount,
                     heightField, hfPatch,
                     polyTriangleVerts, polyTriangles,
@@ -440,9 +445,179 @@ namespace NMGen
                 return 0; 
             }
 
+            int badIndicesCount = getInvalidIndicesCount(outTriangles, outVertCount); 
+            if( badIndicesCount > 0 )
+            {
+                Logger.LogError("[DetailMeshBuilder][build]Invalid indices|{0}",badIndicesCount);
+                outTriangles.Clear();
+                return 0;
+            }
+
+            if( mContourSampleDistance > 0 )
+            {
+                float minX = sourcePoly[0];
+                float minZ = sourcePoly[2];
+                float maxX = minX;
+                float maxZ = minZ;  
+
+                //获取 sourcePoly 的Bounds ，基于真正的坐标值 
+                for(int iVert = 1; iVert < sourceVertCount; ++iVert )
+                {
+                    int pVert = iVert * 3;
+                    minX = Math.Min(minX, sourcePoly[pVert]);
+                    minZ = Math.Min(minZ, sourcePoly[pVert + 2]);
+                    maxX = Math.Min(maxX, sourcePoly[pVert]);
+                    maxZ = Math.Min(maxZ, sourcePoly[pVert + 2]);
+                }  // for sourceVertCount 
+
+                //TODO ，转换成基于mContourSampleDistance的一个Grid
+                int x0 = (int)Math.Floor(minX / mContourSampleDistance);
+                int z0 = (int)Math.Floor(minZ / mContourSampleDistance);
+                int x1 = (int)Math.Floor(maxX / mContourSampleDistance);
+                int z1 = (int)Math.Floor(minZ / mContourSampleDistance);
+
+                workingSamples.Clear(); 
+
+                for(int z = z0; z < z1; ++z)
+                {
+                    for( int x = x0; x < x1; ++x )
+                    {
+                        float vx = x * mContourSampleDistance;
+                        float vz = z * mContourSampleDistance; 
+
+                        if(getSignedDistanceToPolygonSq(vx,vz,sourcePoly,sourceVertCount) > -mContourSampleDistance/2 )
+                        {
+                            continue; 
+                        }
+
+                        workingSamples.Add(x);
+                        workingSamples.Add(getHeightWithinField(vx,vz,cellSize,inverseCellSize,patch) );
+                        workingSamples.Add(z);  
+                    } // for x -> x1
+                } // for z -> z1 
+
+
+                int sampleCount = workingSamples.Count / 3; 
+                for(int iterationCount = 0; iterationCount < sampleCount; ++iterationCount )
+                {
+                    float selectedX = 0;
+                    float selectedY = 0;
+                    float selectedZ = 0;
+
+                    float maxDistance = 0; 
+
+
+                    for(int iSampleVert = 0; iSampleVert < sampleCount; ++iSampleVert)
+                    {
+                        int iSampleVertBaseIndex = iSampleVert * 3;
+                        float sampleX = workingSamples[iSampleVertBaseIndex];
+                        float sampleY = workingSamples[iSampleVertBaseIndex + 1];
+                        float sampleZ = workingSamples[iSampleVertBaseIndex + 2]; 
+
+                        float sampleDistance = =getInte()
+                    } // for iSampleVert -> sampleCount
+                }  //for iterationCount -> sampleCount 
+
+
+            }  // if mContourSampleDistance > 0 
+
             return 0; 
         }
 
+        private static float getInternalDistanceToMesh(float px,float py,float pz,
+            float[] verts, List<int> indices)
+        {
+            float minDistance = float.MaxValue; 
+            int triangelCount = indices.Count / 3; 
+
+            for(int iTriangle = 0; iTriangle < triangelCount; ++iTriangle)
+            {
+                int iTriangleBaseIndex = iTriangle * 3;
+                int pVertA = indices[iTriangleBaseIndex] * 3;
+                int pVertB = indices[iTriangleBaseIndex + 1] * 3;
+                int pVertC = indices[iTriangleBaseIndex + 2] * 3;
+
+                float distance = float.MaxValue;
+
+                float deltaACx = verts[pVertC] - verts[pVertA];
+                float deltaACy = verts[pVertC + 1] - verts[pVertA + 1];
+                float deltaACz = verts[pVertC + 2] - verts[pVertA + 2];
+
+                float deltaABx = verts[pVertB] - verts[pVertA];
+                float deltaABy = verts[pVertB + 1] - verts[pVertA + 1];
+                float deltaABz = verts[pVertB + 2] - verts[pVertA + 2];
+
+                float deltaAPx = px - verts[pVertA];
+                float deltaAPz = pz - verts[pVertA + 2]; 
+
+
+            }  // for iTriangle -> triangleCount 
+        }
+
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="z"></param>
+        /// <param name="verts"></param>
+        /// <param name="vertCount"></param>
+        /// <returns></returns>
+        private static float getSignedDistanceToPolygonSq(float x, float z,float[] verts , int vertCount)
+        {
+            float minDistance = float.MaxValue;
+            int iVertB;
+            int iVertA;
+            bool isInside = false; 
+
+            //按边来轮循
+            for( iVertB = 0 , iVertA = vertCount - 1; iVertB < vertCount; iVertA = iVertB++ )
+            {
+                //以A-B为边
+                int pVertB = iVertB * 3;
+                int pVertA = iVertA * 3;
+
+                /*
+                 *  https://www.codeproject.com/tips/84226/is-a-point-inside-a-polygon
+                 *  https://wrf.ecse.rpi.edu//Research/Short_Notes/pnpoly.html
+                 *  First of all, notice that each iteration considers two adjacent points and the target point. Then the if statement evaluates two conditions:Y-value of our target point is within the range [verty[j], verty[i]).
+                 *  X-value of our target point is below the linear line connecting the point j and i.
+                 */
+
+                //条件1就是y轴投影要在多边形的范围内
+                bool cond1 = (verts[pVertB + 2] > z) != (verts[pVertA + 2] > z);
+                //条件2用两点式代入即可，将小于号看成等号，好理解些.
+                //其实就是点与直线之间的关系 ，在直线哪一侧 ，自己用一条横线横过三角形试试
+                bool cond2 = (x < (verts[pVertA] - verts[pVertB]) * (z - verts[pVertB + 2]) / (verts[pVertA + 2] - verts[pVertB + 2]) + verts[pVertB])  ;  
+                if( cond1 && cond2 )
+                {
+                    //作者的代码有误，这里没用对
+                    isInside = !isInside ; 
+                } //
+
+                minDistance = Math.Min(minDistance, 
+                    Geometry.getPointSegmentDistanceSq(x,z,
+                    verts[pVertA],verts[pVertA+2],
+                    verts[pVertB],verts[pVertB+2])
+                    ); 
+            } // for iVertB -> vertCount
+
+            return isInside ? -minDistance : minDistance; 
+        }
+
+        private static int getInvalidIndicesCount( List<int> indices ,int vertCount)
+        {
+            int badIndicesCount = 0; 
+            for(int i = 0; i < indices.Count; ++i)
+            {
+                int index = indices[i]; 
+                if( index < 0 || index >= vertCount  )
+                {
+                    badIndicesCount++; 
+                }
+            }
+            return badIndicesCount;  
+        }
 
         private static bool overlapsExistingEdge(int iVertA ,int iVertB ,float[] verts,List<int> edges )
         {
@@ -853,6 +1028,18 @@ namespace NMGen
             return height; 
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="polyPointer"></param>
+        /// <param name="vertCount"></param>
+        /// <param name="indices">存的是多边形的顶点索引</param>
+        /// <param name="verts"></param>
+        /// <param name="heightField"></param>
+        /// <param name="inoutPatch"></param>
+        /// <param name="gridIndexStack"></param>
+        /// <param name="spanStack"></param>
+        /// <param name="widthDepth"></param>
         private static void loadHeightPatch(int polyPointer,int vertCount,int[] indices,int[] verts,
             OpenHeightfield heightField,
             HeightPatch inoutPatch,

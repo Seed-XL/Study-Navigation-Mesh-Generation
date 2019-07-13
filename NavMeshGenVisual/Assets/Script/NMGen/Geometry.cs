@@ -117,6 +117,37 @@ namespace NMGen
             return false;
         }
 
+        public static float getPointSegmentDistanceSq(float px,float py,
+            float ax,float ay,
+            float bx,float by)
+        {
+            float deltaABx = bx - ax;
+            float dletaABy = by - ay;
+            float deltaAPx = px - ax;
+            float deltaAPy = py - ay;
+
+            float segmentABLengthSq = deltaABx * deltaABx + deltaAPy * deltaAPy; 
+            if( 0 == segmentABLengthSq )
+            {
+                return deltaAPx * deltaAPx + deltaAPy * deltaAPy; 
+            }
+
+            float u = (deltaAPx * deltaAPx + deltaAPy * deltaAPy) / segmentABLengthSq  ; 
+            if( u < 0 )
+            {
+                return deltaAPx * deltaAPx + deltaAPy * deltaAPy; 
+            }
+            else if ( u > 1 )
+            {
+                return (px - bx) * (px - bx)  + (py - by) * (py -by) ; 
+            }
+
+            float deltaX = (ax + u * deltaABx) - px;
+            float deltaY = (ay + u * deltaAPy) - py;
+
+            return deltaX * deltaX + deltaY * deltaY; 
+        }
+
         public static float getPointSegmentDistanceSq(
             int px,int py,   //点P
             int ax,int ay,   //端点 a
