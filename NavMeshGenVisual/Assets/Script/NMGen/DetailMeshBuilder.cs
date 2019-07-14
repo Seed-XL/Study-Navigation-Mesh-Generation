@@ -1,7 +1,6 @@
 ﻿using System;
 using Utility.Logger;
 using System.Collections.Generic;
-using Utility.Logger; 
 
 
 namespace NMGen
@@ -227,10 +226,58 @@ namespace NMGen
                     polyTriangleVerts, polyTriangles,
                     workingEdges, workingSamples); 
 
+                if( polyTriangleVertCount < 3 )
+                {
+                    Logger.LogError("[build]Generation detail Polygon Failed|{0}|{1}|{2}",iPoly,sourceMesh.getPolyRegion(iPoly),polyTriangleVertCount);
+                    continue; 
+                }
+
+                globalVerts.Capacity = globalVerts.Count + polyTriangleVertCount * 3;
+                globalTriangles.Capacity = (globalTriangles.Count + polyTriangles.Count * 4 / 3);
+
+                int indexOffset = globalVerts.Count / 3; //原来所有三角形的末尾
+                for(int iVert = 0; iVert < polyTriangleVertCount; ++iVert)
+                {
+                    //高度域的坐标转换为世界坐标
+                    int baseIdx = iVert * 3;
+                    globalVerts.Add(polyTriangleVerts[baseIdx] + minBounds[0]);
+                    globalVerts.Add(polyTriangleVerts[baseIdx + 1] + minBounds[1]); 
+                    globalVerts.Add(polyTriangleVerts[baseIdx + 2] + minBounds[2]) ;  
+                } // for iVert -> polyTriangleVertCount 
+
+
+                for(int pTriangle = 0; pTriangle < polyTriangles.Count; pTriangle += 3 )
+                {
+                    globalTriangles.Add(polyTriangles[pTriangle] + indexOffset);
+                    globalTriangles.Add(polyTriangles[pTriangle + 1] + indexOffset); 
+                    globalTriangles.Add(polyTriangles[pTriangle + 2] + indexOffset)  ;
+                    globalTriangles.Add(sourceMesh.getPolyRegion(iPoly));  
+                } // pTriangle -> polyTriangles.Count
+
             } // all Polygons 
 
-            return null; 
+            mesh.vertices = new float[globalVerts.Count];
+            for(int i = 0; i < globalVerts.Count; ++i)
+            {
+                mesh.vertices[i] = globalVerts[i]; 
+            }
 
+            mesh.indices = new int[globalTriangles.Count * 3 / 4];
+            int tCount = globalTriangles.Count / 4;
+            mesh.triangleRegions = new int[tCount];  
+
+            //因为Region信息要单独存
+            for(int i = 0;i < tCount; ++i)
+            {
+                int sourcePointer = i * 4;
+                int destinationPointer = i * 3;
+                mesh.indices[destinationPointer] = globalTriangles[sourcePointer];
+                mesh.indices[destinationPointer + 1] = globalTriangles[sourcePointer + 1];
+                mesh.indices[destinationPointer + 2] = globalTriangles[sourcePointer + 2];
+                mesh.triangleRegions[i] = globalTriangles[sourcePointer + 3];  
+            }
+
+            return mesh; 
         } //build 
 
         private int buildPolyDetail(float[] sourcePoly,int sourceVertCount,
@@ -470,7 +517,7 @@ namespace NMGen
                     maxZ = Math.Min(maxZ, sourcePoly[pVert + 2]);
                 }  // for sourceVertCount 
 
-                //TODO ，转换成基于mContourSampleDistance的一个Grid
+                //TODO ，转换成基于mContourSampleDistance的一个Grid，也就是多边形的Space
                 int x0 = (int)Math.Floor(minX / mContourSampleDistance);
                 int z0 = (int)Math.Floor(minZ / mContourSampleDistance);
                 int x1 = (int)Math.Floor(maxX / mContourSampleDistance);
@@ -485,6 +532,7 @@ namespace NMGen
                         float vx = x * mContourSampleDistance;
                         float vz = z * mContourSampleDistance; 
 
+                        //正值代表在多边形外，而比 -mContourSampleDistance/2还要大的值，表示非常靠近边缘
                         if(getSignedDistanceToPolygonSq(vx,vz,sourcePoly,sourceVertCount) > -mContourSampleDistance/2 )
                         {
                             continue; 
@@ -512,16 +560,47 @@ namespace NMGen
                         int iSampleVertBaseIndex = iSampleVert * 3;
                         float sampleX = workingSamples[iSampleVertBaseIndex];
                         float sampleY = workingSamples[iSampleVertBaseIndex + 1];
-                        float sampleZ = workingSamples[iSampleVertBaseIndex + 2]; 
+                        float sampleZ = workingSamples[iSampleVertBaseIndex + 2];
 
-                        float sampleDistance = =getInte()
+                        float sampleDistance = getInternalDistanceToMesh(sampleX, sampleY, sampleZ, outVerts, outTriangles);
+                        if( sampleDistance > maxDistance )
+                        {
+                            maxDistance = sampleDistance;
+                            selectedX = sampleX;
+                            selectedY = sampleY;
+                            selectedZ = sampleZ;  
+
+                        } // if sampleDistance > maxDistance 
                     } // for iSampleVert -> sampleCount
+
+                    if( maxDistance <= mContourMaxDeviation )
+                    {
+                        break;  
+                    }
+
+                    //补充顶点
+                    int newVertIndexBase = outVertCount * 3;
+                    outVerts[newVertIndexBase] = selectedX;
+                    outVerts[newVertIndexBase + 1] = selectedY;
+                    outVerts[newVertIndexBase + 2] = selectedZ;
+                    outVertCount++;
+
+                    performDelaunayTriangulation(outVerts, outVertCount, hullIndices, hullIndicesCount, workingEdges, outTriangles);
+
+                    badIndicesCount = getInvalidIndicesCount(outTriangles, outVertCount);  
+                    if( badIndicesCount > 0 )
+                    {
+                        Logger.LogError("[DetailMeshBuilder][build]Second Pass Invalid indices|{0}", badIndicesCount);
+                        outTriangles.Clear();
+                        return 0;
+                    }
+
                 }  //for iterationCount -> sampleCount 
 
 
             }  // if mContourSampleDistance > 0 
 
-            return 0; 
+            return outVertCount; 
         }
 
         private static float getInternalDistanceToMesh(float px,float py,float pz,
@@ -532,26 +611,93 @@ namespace NMGen
 
             for(int iTriangle = 0; iTriangle < triangelCount; ++iTriangle)
             {
-                int iTriangleBaseIndex = iTriangle * 3;
+                int iTriangleBaseIndex = iTriangle * 3;  //指向哪个三角形 
+                //分别对应三角形的三个顶点
                 int pVertA = indices[iTriangleBaseIndex] * 3;
                 int pVertB = indices[iTriangleBaseIndex + 1] * 3;
                 int pVertC = indices[iTriangleBaseIndex + 2] * 3;
 
                 float distance = float.MaxValue;
 
+                /*  reference: https://zhuanlan.zhihu.com/p/65495373
+                 *  
+                 *  对于三角形内的任意一点P
+                 *  向量AP、AB、AC线性相关，因此可以写成
+                 *  AP = u * AB + v * AC
+                 *   拆分成点 =>
+                 *  A - P = u * (A-B) + v * (A-c)
+                 *   求出P点  =>
+                 *  P = (1 - u - v) * A + u * B + v * C 
+                 *  其中 0 <= u,v <= 1
+                 *   
+                 *  而这式子，又有点像线性插值的公式  
+                 *  
+                 *  可以将ABC看成坐标系，A为了原点，基为 AB和AC，这样就构造了一个重心坐标系
+                 *  所以知道一点P，可以得到 AP = u * AB + v * AC
+                 *  => u * AB + v * AC - AP = 0   
+                 *  拆成 x和y轴 =>  u * ABx + v * ACx + PAx = 0  和 u * ABy + v * ACy + PAy = 0 
+                 *  => 转换成矩阵：
+                 *              [ ABx ]                     [ ABy ]
+                 *  [ u , v , 1][ ACx ] = 0 和  [ u , v , 1][ ACy ] = 0 
+                 *              [ PAx ]                     [ PAy ]
+                 *  实际上寻找重点坐标，就变成了寻找向量(u,v,1)同时垂直于向量(ABx,ACx,PAx) 和 (ABy,ACy,PAy),也就是叉乘             
+                 *              
+                 *  
+                 *  同时可知，有了一点P，可以求u和v的思路：
+                 *  xvector = (B_x - A_x, C_x - A_x, A_x - P_x)
+                 *  yvector = (B_y - A_y, C_y - A_y, A_y - P_y)
+                 *  u = xvector x yvector  (外积的性质，外积的向量同时垂直于两者)
+                 *  # 因为我们讨论的是二维的三角形，如果 u 的 z 分量不等于1则说明P点不在三角形内
+                 *  
+                 */
+
+                //AC
                 float deltaACx = verts[pVertC] - verts[pVertA];
                 float deltaACy = verts[pVertC + 1] - verts[pVertA + 1];
                 float deltaACz = verts[pVertC + 2] - verts[pVertA + 2];
 
+                //AB
                 float deltaABx = verts[pVertB] - verts[pVertA];
                 float deltaABy = verts[pVertB + 1] - verts[pVertA + 1];
                 float deltaABz = verts[pVertB + 2] - verts[pVertA + 2];
 
+                //AP
                 float deltaAPx = px - verts[pVertA];
-                float deltaAPz = pz - verts[pVertA + 2]; 
+                float deltaAPz = pz - verts[pVertA + 2];
 
+                float dotACAC = deltaACx * deltaACx + deltaACx * deltaACx;
+                float dotACAB = deltaACx * deltaABx + deltaACz * deltaABz;
+                float dotACAP = deltaACx * deltaAPx + deltaACz * deltaAPz;
+                float dotABAB = deltaABx * deltaABx + deltaABz * deltaABz;
+                float dotABAP = deltaABx * deltaAPx + deltaABz * deltaAPz;
+
+                float inverseDenominator = 1.0f / (dotACAC * dotABAB - dotACAB * dotACAB);
+                float u = (dotABAB * dotACAP - dotACAB * dotABAP) * inverseDenominator ;
+                float v = (dotACAC * dotABAP - dotACAB * dotACAP) * inverseDenominator ;
+
+                float tolerane = 1e-4f; 
+                if( u >= -tolerane 
+                    && v >= -tolerane 
+                    && (u+v) <= 1 + tolerane )  //要小于1才是在三角形内
+                {
+                    //然后再利用插值，求出 y 点的高度
+                    float y = verts[pVertA + 1] + deltaACy * u + deltaABy * v;
+                    distance = Math.Abs(y - py);
+                }
+
+                if( distance < minDistance)
+                {
+                    minDistance = distance; 
+                }
 
             }  // for iTriangle -> triangleCount 
+
+            if( float.MaxValue == minDistance  )
+            {
+                return UNDEFINED; 
+            }
+
+            return minDistance;  
         }
 
 
@@ -587,7 +733,7 @@ namespace NMGen
                 //条件1就是y轴投影要在多边形的范围内
                 bool cond1 = (verts[pVertB + 2] > z) != (verts[pVertA + 2] > z);
                 //条件2用两点式代入即可，将小于号看成等号，好理解些.
-                //其实就是点与直线之间的关系 ，在直线哪一侧 ，自己用一条横线横过三角形试试
+                //其实就是点与直线之间的关系 ，在直线哪一侧 ，自己用一条横线横过三角形试试，可以看出奇数次的就是在多边形内
                 bool cond2 = (x < (verts[pVertA] - verts[pVertB]) * (z - verts[pVertB + 2]) / (verts[pVertA + 2] - verts[pVertB + 2]) + verts[pVertB])  ;  
                 if( cond1 && cond2 )
                 {
@@ -916,7 +1062,8 @@ namespace NMGen
                 }
             } // while iCurrentEdge
 
-            outTriangles.Clear(); 
+            outTriangles.Clear();
+            outTriangles.Capacity = triangleCount * 3; 
             for(int i = 0; i < triangleCount * 3; ++i)
             {
                 outTriangles.Add(UNDEFINED);

@@ -27,7 +27,7 @@ namespace NMGen
             float cellHeight,
             int minTraversableHeight ,
             int maxTraversableStep,
-            int maxTraversableSlope,
+            float maxTraversableSlope,
             bool clipLedges
             )
         {

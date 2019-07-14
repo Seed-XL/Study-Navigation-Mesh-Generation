@@ -328,5 +328,10 @@ namespace NMGen
 
         #endregion
 
+
+        public bool hasSpans()
+        {
+            return (mSpans.Count > 0); 
+        }
     }
 }

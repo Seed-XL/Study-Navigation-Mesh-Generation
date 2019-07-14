@@ -122,17 +122,17 @@ namespace NMGen
             float bx,float by)
         {
             float deltaABx = bx - ax;
-            float dletaABy = by - ay;
+            float deltaABy = by - ay;
             float deltaAPx = px - ax;
             float deltaAPy = py - ay;
 
-            float segmentABLengthSq = deltaABx * deltaABx + deltaAPy * deltaAPy; 
+            float segmentABLengthSq = deltaABx * deltaABx + deltaABy * deltaABy; 
             if( 0 == segmentABLengthSq )
             {
                 return deltaAPx * deltaAPx + deltaAPy * deltaAPy; 
             }
 
-            float u = (deltaAPx * deltaAPx + deltaAPy * deltaAPy) / segmentABLengthSq  ; 
+            float u = (deltaAPx * deltaABx + deltaAPy * deltaABy) / segmentABLengthSq  ; 
             if( u < 0 )
             {
                 return deltaAPx * deltaAPx + deltaAPy * deltaAPy; 
@@ -143,7 +143,7 @@ namespace NMGen
             }
 
             float deltaX = (ax + u * deltaABx) - px;
-            float deltaY = (ay + u * deltaAPy) - py;
+            float deltaY = (ay + u * deltaABy) - py;
 
             return deltaX * deltaX + deltaY * deltaY; 
         }
