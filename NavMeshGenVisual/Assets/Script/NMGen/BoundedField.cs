@@ -112,7 +112,7 @@ namespace NMGen
                 return false; 
             }
 
-            //三个轴分别检测是否重叠
+            //三个轴分别检测是否重叠，只要有一个轴重叠，就必然重叠
             overlaps = (mBoundsMin[0] > boundsMax[0] || mBoundsMax[0] < boundsMin[0])
                 ? false : overlaps;
             overlaps = (mBoundsMin[1] > boundsMax[1] || mBoundsMax[1] < boundsMin[1])

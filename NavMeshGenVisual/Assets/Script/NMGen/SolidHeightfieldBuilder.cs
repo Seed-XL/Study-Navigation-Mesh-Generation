@@ -88,7 +88,7 @@ namespace NMGen
             float ymax = vertices[1];
             float zmax = vertices[2];
 
-            //
+            //遍历所有顶点，找出最大的Bounds
             for(int i = 3; i < vertices.Length; i+= 3)
             {
                 xmax = Math.Max(vertices[i],xmax);
@@ -263,6 +263,7 @@ namespace NMGen
                 vertices[indices[pPoly+2]*3+2], //VertC z
             };
 
+            //三角面的xz投影包围盒
             float[] triBoundsMin = new float[] {
                 triVerts[0],triVerts[1],triVerts[2]
             };
@@ -270,7 +271,7 @@ namespace NMGen
                 triVerts[0],triVerts[1],triVerts[2]
             };
 
-            // int vertPointer = 3  相当于  int i = 1 ，从第二个顶点开始算起，数组长度总共为9
+            // int vertPointer = 3  相当于  int i = 1 ，因为是从第二个顶点开始算起，数组长度总共为9
             // Loop through all vertices to determine the actual bounding box.
             for (int vertPointer = 3; vertPointer < 9; vertPointer += 3)
             {
@@ -288,11 +289,17 @@ namespace NMGen
             }
 
             //将三角形的坐标转换成对应的cell坐标系,就是具体对应到哪个width和depth的Column  
-            //这里其实我有点疑惑，一个标题除以标题，得到的竟然是一个索引，这不太科学
+            //两个坐标相差得到距离，再除以cell的大小，得到每个坐标对应落在哪个Cell
             int triWidthMin = (int)((triBoundsMin[0] - inoutField.boundsMin()[0]) * inverseCellSize);
             int triDepthMin = (int)((triBoundsMin[2] - inoutField.boundsMin()[2]) * inverseCellSize);
             int triWidthMax = (int)((triBoundsMax[0] - inoutField.boundsMin()[0]) * inverseCellSize);
             int triDepthMax = (int)((triBoundsMax[2] - inoutField.boundsMin()[2]) * inverseCellSize);
+
+            triWidthMin = clamp(triWidthMin, 0, inoutField.width() - 1);
+            triDepthMin = clamp(triDepthMin, 0, inoutField.depth() - 1);
+            triWidthMax = clamp(triWidthMax, 0, inoutField.width() - 1);
+            triDepthMax = clamp(triWidthMax, 0, inoutField.depth() - 1);
+            
 
 
             //从论文的图示来看，三角形与矩形的交点组成的凸包最多有7个点。
@@ -301,15 +308,15 @@ namespace NMGen
             float[] inrowVerts = new float[21];
 
 
-            float fieldHeight = inoutField.boundsMax()[1] - inoutField.boundsMin()[1]; 
+            float fieldHeight = inoutField.boundsMax()[1] - inoutField.boundsMin()[1];
 
-            //找个所有与三角形相交的体素
-            for( int depthIndex = triDepthMin; depthIndex <= triDepthMax; ++depthIndex )
+            //http://www.sunshine2k.de/coding/java/SutherlandHodgman/SutherlandHodgman.html
+            for ( int depthIndex = triDepthMin; depthIndex <= triDepthMax; ++depthIndex )
             {
                 Array.Copy(triVerts, 0, inVerts, 0, triVerts.Length);
 
                 int intermediateVertCount = 3;
-                //将体素depth坐标为 depthIndex 转变为 笛卡尔坐标的 z.
+                //将体素depth坐标为 depthIndex 对应的 Edge 转变为 笛卡尔坐标的 z.
                 //其实就是从体素坐标系转变为 笛卡尔坐标系
                 float rowWorldZ = inoutField.boundsMin()[2]
                     + (depthIndex * inoutField.cellSize());
