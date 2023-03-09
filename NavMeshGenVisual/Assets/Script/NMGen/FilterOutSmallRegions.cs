@@ -181,7 +181,7 @@ namespace NMGen
             #region  re-map 区域ID，保持ID连接
             foreach(Region region in regions)
             {
-                if( region.id >= NULL_REGION )
+                if( region.id != NULL_REGION )
                 {
                     region.remap = true; 
                 }
