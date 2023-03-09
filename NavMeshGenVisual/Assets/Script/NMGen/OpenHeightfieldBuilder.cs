@@ -547,7 +547,7 @@ namespace NMGen
 
                 //(1,-1) 
                 nSpan = nSpan.getNeighbor(2);
-                selfDist = calcMiniDistanceToBorder(selfDist, nSpan, true);
+                selfDist = calcMiniDistanceToBorder(selfDist, nSpan, false);
                 
                 span.setDistanceToBorder(selfDist); 
 
