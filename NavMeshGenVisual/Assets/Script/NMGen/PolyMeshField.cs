@@ -62,7 +62,7 @@ namespace NMGen
                 int pVert = polys[pPoly + i] * 3;  //3个数据为一级
                 result[i * 3] = verts[pVert]; //x
                 result[i * 3 + 1] = verts[pVert + 1];  //y
-                result[i * 3 + 1] = verts[pVert + 2];  //z
+                result[i * 3 + 2] = verts[pVert + 2];  //z
             }
 
             return result; 
