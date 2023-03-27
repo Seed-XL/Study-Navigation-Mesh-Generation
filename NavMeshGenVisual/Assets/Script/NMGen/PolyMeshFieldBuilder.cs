@@ -588,7 +588,7 @@ namespace NMGen
                 }
                 else
                 {
-                    inoutIndices[j] = inoutIndices[j] | DEFLAG; 
+                    inoutIndices[j] = inoutIndices[j] & DEFLAG; 
                 }
 
                 if( isValidPartition(j,getNextIndex(jPlus1,inoutIndices.Count),verts,inoutIndices)) 
@@ -597,7 +597,7 @@ namespace NMGen
                 }
                 else
                 {
-                    inoutIndices[jPlus1] = inoutIndices[jPlus1] | DEFLAG; 
+                    inoutIndices[jPlus1] = inoutIndices[jPlus1] & DEFLAG; 
                 }
 
             } // while innoutIndices
