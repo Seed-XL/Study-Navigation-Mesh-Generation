@@ -130,8 +130,8 @@ namespace NMGen
                     int pVert = sourcePolys[pPoly + vertOffset] * 3;
                     polyXZBounds[pxmin] = Math.Min(polyXZBounds[pxmin], sourceVerts[pVert]);
                     polyXZBounds[pxmax] = Math.Max(polyXZBounds[pxmax], sourceVerts[pVert]);
-                    polyXZBounds[pzmin] = Math.Min(polyXZBounds[pzmin], sourceVerts[pVert]);
-                    polyXZBounds[pzmax] = Math.Max(polyXZBounds[pzmax], sourceVerts[pVert]);
+                    polyXZBounds[pzmin] = Math.Min(polyXZBounds[pzmin], sourceVerts[pVert + 2]);
+                    polyXZBounds[pzmax] = Math.Max(polyXZBounds[pzmax], sourceVerts[pVert + 2]);
 
                     totalPolyVertCount++; 
                 } // for maxVertsPerPoly 
