@@ -314,7 +314,7 @@ namespace NMGen
                     //字典序,先对比 x的，再对比z ，反正就是坐标较小那个为先
                     //TODO 不明白为啥要搞这个？保护顶点的处理顺序一致？
                     //两个点的x坐标非常相近？
-                    if( Math.Abs(sourcePoly[pSourceVertA] - sourcePoly[pSourceVertB]) < float.MinValue )  
+                    if( Math.Abs(sourcePoly[pSourceVertA] - sourcePoly[pSourceVertB]) < 1e-6 )  
                     {
                         //A的Z坐标稍微大点？
                         if( sourcePoly[pSourceVertA+2] > sourcePoly[pSourceVertB+2] )
